@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# 下载输出
+downloads/
+
+# IDE / 系统
+.idea/
+.vscode/
+.DS_Store
+
+# 环境变量与密钥
+.env
+*.env
