@@ -59,7 +59,10 @@ def _add_download_args(parser: argparse.ArgumentParser) -> None:
         help="结束日期 YYYY-MM-DD 或 YYYYMMDD（默认今天）",
     )
     parser.add_argument(
-        "-o", "--output-dir", default=None, help="输出目录（默认 ./downloads）"
+        "-o",
+        "--output-dir",
+        default=None,
+        help="输出目录（默认 <项目目录>/downloads；相对路径相对当前工作目录）",
     )
     parser.add_argument(
         "-f",
