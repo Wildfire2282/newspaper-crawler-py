@@ -29,16 +29,14 @@ RE_CONTENT = re.compile(r"content_(\d+)\.html")
 
 def _edition_url(d: date, page: int) -> str:
     return (
-        f"{BASE_URL}/layout/{d.year:04d}{d.month:02d}/{d.day:02d}"
-        f"/node_{page:02d}.html"
+        f"{BASE_URL}/layout/{d.year:04d}{d.month:02d}/{d.day:02d}/node_{page:02d}.html"
     )
 
 
 def _article_url(d: date, cid: str) -> str:
     """文章页 URL，cid 为捕获到的原始字符串（不做补零，与 Rust 版一致）。"""
     return (
-        f"{BASE_URL}/content/{d.year:04d}{d.month:02d}/{d.day:02d}"
-        f"/content_{cid}.html"
+        f"{BASE_URL}/content/{d.year:04d}{d.month:02d}/{d.day:02d}/content_{cid}.html"
     )
 
 

@@ -7,14 +7,15 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import date, timedelta
+from pathlib import Path
 from typing import Callable, Optional
 
 from .base import BaseCrawler, SiteCrawler
-from .formatter import Formatter
+from .formatter import Formatter, count_full
 from .http import HttpSession
-from .models import CrawlOptions, CrawlStats, Edition, is_full
+from .models import CrawlOptions, CrawlStats
 from .registry import lookup
 from .storage import atomic_write
 from .util import weekday_cn
@@ -35,16 +36,12 @@ class ProgressEvent:
     errors: int = 0
     level: str = "info"  # log 事件用
     message: str = ""
+    path: Optional[Path] = None  # day_skip/day_done 对应的目标文件
     stats: Optional[CrawlStats] = None  # site_done/finished 用
     elapsed_secs: float = 0.0  # finished 用
 
 
 EventFn = Callable[[ProgressEvent], None]
-
-
-def count_full_articles(editions: list[Edition]) -> int:
-    """统计已抓取为完整文章的篇数。"""
-    return sum(1 for ed in editions for item in ed.articles if is_full(item))
 
 
 def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlStats:
@@ -56,9 +53,13 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
     stats = CrawlStats()
     site_name = site.name
     formatter = Formatter(site.name, site.base_url)
-    http = HttpSession(fast_mode=getattr(opts, "fast_mode", False))
+    http = HttpSession()
 
-    on_event(ProgressEvent(kind="site_start", site=site_name, message=f"[{site_name}] 任务开始"))
+    on_event(
+        ProgressEvent(
+            kind="site_start", site=site_name, message=f"[{site_name}] 任务开始"
+        )
+    )
 
     try:
         current = opts.start_date
@@ -77,6 +78,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
                         site=site_name,
                         date=current,
                         weekday=weekday,
+                        path=filepath,
                         message=f"[{site_name}] {current}({weekday}) 跳过",
                     )
                 )
@@ -121,7 +123,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
                 continue
 
             if editions:
-                total_articles = count_full_articles(editions)
+                total_articles = count_full(editions)
                 total_editions = len(editions)
                 if opts.output_format.ext() == "txt":
                     content = formatter.plain(current, editions)
@@ -154,6 +156,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
                         editions=total_editions,
                         articles=total_articles,
                         errors=err_count,
+                        path=filepath,
                         message=(
                             f"[{site_name}] {current}({weekday}) 完成 "
                             f"{total_editions} 版 {total_articles} 篇{extra}"

@@ -11,7 +11,7 @@
 from __future__ import annotations
 
 import re
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Optional
 
@@ -56,9 +56,7 @@ def _fetch_texts(
         return list(pool.map(lambda u: http.get_text(u, silent_404=silent_404), urls))
 
 
-def _old_article_refs(
-    soup: BeautifulSoup, base: str
-) -> list[ArticleRef]:
+def _old_article_refs(soup: BeautifulSoup, base: str) -> list[ArticleRef]:
     """旧版版面页：收集 href 含 nw.D110000renmrb 的 <a>。
 
     标题 = 把 <a> 内所有 <br> 替换为空格后的纯文本（对齐 Rust 的 br→空格再取 text）。

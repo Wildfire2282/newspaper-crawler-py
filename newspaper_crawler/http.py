@@ -45,7 +45,9 @@ class HttpSession:
         """GET 请求；全部失败返回 None。404 且 silent_404 时静默返回 None。"""
         for attempt in range(self.max_retries):
             try:
-                resp = self.session.get(url, timeout=(self.connect_timeout, self.timeout))
+                resp = self.session.get(
+                    url, timeout=(self.connect_timeout, self.timeout)
+                )
             except requests.RequestException as exc:  # 连接错误/超时等
                 if attempt + 1 < self.max_retries:
                     wait = _backoff_secs(attempt)
@@ -98,4 +100,4 @@ def _decode(resp: requests.Response) -> str:
 
 def _backoff_secs(attempt: int) -> float:
     """2^n + 随机抖动。"""
-    return 2 ** attempt + random.random()
+    return 2**attempt + random.random()

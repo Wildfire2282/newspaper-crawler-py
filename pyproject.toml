@@ -1,0 +1,53 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "newspaper-crawler"
+version = "3.2.0"
+description = "人民日报 / 光明日报 / 经济日报 / 大众日报电子报批量下载"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31",
+    "beautifulsoup4>=4.12",
+    "rich>=13.7",
+]
+
+[dependency-groups]
+# PEP 735 依赖组：`uv sync` 默认安装本组，`uv sync --no-dev` 可跳过。
+dev = [
+    "pytest>=8",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[project.scripts]
+newspaper-crawler = "newspaper_crawler.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["newspaper_crawler"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+# 只启用能抓真实问题的规则；UP/部分 B 属风格偏好，与既有代码约定冲突，故不启用。
+select = ["E4", "E7", "E9", "F", "B", "I"]
+ignore = [
+    "B905",  # zip() 未显式 strict=：本项目的并行抓取结果与输入等长，属构造保证
+]
+
+[tool.mypy]
+python_version = "3.10"
+ignore_missing_imports = true
+
+# 站点解析模块依赖 BeautifulSoup 的动态属性类型（属性值可能是 str | AttributeValueList），
+# 静态检查收益低、噪音大，故对这些模块关闭 mypy。
+[[tool.mypy.overrides]]
+module = "newspaper_crawler.sites.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

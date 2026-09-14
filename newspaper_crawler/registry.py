@@ -29,7 +29,7 @@ def _registry_map() -> dict[str, SiteCrawler]:
     for s in _SITES:
         m[s.crawler_id] = s
         m[s.name] = s
-        for alias in s.aliases:
+        for alias in s.aliases or []:
             m[alias] = s
     return m
 

@@ -33,8 +33,8 @@ class Article:
     """文章（统一抓取结果）。"""
 
     title: str = ""
-    yinti: str = ""        # 引题 / 肩题
-    subtitle: str = ""     # 副题
+    yinti: str = ""  # 引题 / 肩题
+    subtitle: str = ""  # 副题
     author: str = ""
     paragraphs: list = field(default_factory=list)  # list[str]
     image_desc: str = ""
@@ -85,6 +85,18 @@ class CrawlStats:
         self.total_editions += other.total_editions
         self.total_articles += other.total_articles
         self.total_errors += other.total_errors
+
+    def as_dict(self) -> dict:
+        """转为可 JSON 序列化的字典。"""
+        return {
+            "days_attempted": self.days_attempted,
+            "days_success": self.days_success,
+            "days_skipped": self.days_skipped,
+            "days_empty": self.days_empty,
+            "total_editions": self.total_editions,
+            "total_articles": self.total_articles,
+            "total_errors": self.total_errors,
+        }
 
     def __str__(self) -> str:
         return (

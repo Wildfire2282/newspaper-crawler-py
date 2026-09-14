@@ -18,6 +18,9 @@ downloads/
 .vscode/
 .DS_Store
 
+# AI 工具本地状态（同 .vscode/，不入库）
+.commandcode/
+
 # 环境变量与密钥
 .env
 *.env

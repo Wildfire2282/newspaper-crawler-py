@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Optional
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup
 
 from ..base import SiteCrawler
 from ..http import HttpSession
@@ -115,7 +115,9 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
     return editions
 
 
-def _old_page_items(soup: BeautifulSoup, page_url: str, page_num: int) -> tuple[str, list[ArticleRef]]:
+def _old_page_items(
+    soup: BeautifulSoup, page_url: str, page_num: int
+) -> tuple[str, list[ArticleRef]]:
     """旧版版面页：返回 (版名, 文章引用列表)。
 
     版名取自 <title>（第N版:版名 格式），取不到时默认 第{page_num:02d}版（对齐 Rust）；
@@ -184,9 +186,7 @@ def _fetch_new_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
     else:
         title = clean_title(title)
 
-    paragraphs = [
-        p.get_text().strip() for p in doc.select(".m-article-main p")
-    ]
+    paragraphs = [p.get_text().strip() for p in doc.select(".m-article-main p")]
     paragraphs = [s for s in paragraphs if s]
 
     info = doc.select_one(".m-article-info")
