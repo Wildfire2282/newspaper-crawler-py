@@ -74,26 +74,121 @@ def _add_download_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
+class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
+    """保留 epilog 的原始换行与缩进（示例、字段列表按行展示）。"""
+
+
+def _add_help_flag(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("-h", "--help", action="help", help="显示帮助信息并退出")
+
+
+def _localize(parser: argparse.ArgumentParser) -> None:
+    """把 argparse 的 options 分组标题改为中文（该属性长期稳定，无公开 API）。"""
+    parser._optionals.title = "选项"
+
+
+def _subparser(sub, name: str, summary: str, epilog: str) -> argparse.ArgumentParser:
+    """创建统一的子命令解析器：中文帮助入口 + 带示例的 epilog。"""
+    parser = sub.add_parser(
+        name,
+        help=summary,
+        epilog=epilog,
+        formatter_class=_HelpFormatter,
+        add_help=False,
+    )
+    _add_help_flag(parser)
+    _localize(parser)
+    return parser
+
+
+_IO_AND_EXIT = """\
+输出与退出码:
+  结果写 stdout，进度与日志写 stderr；--json 时 stdout 为单个 JSON 对象。
+  0    成功（含「当日无报纸」这类正常空结果）
+  1    运行期错误（抓取失败、站点无法识别等）
+  2    用法或参数错误
+  130  被 Ctrl+C 中断"""
+
+_MAIN_EPILOG = f"""\
+无参数且处于终端时进入交互式菜单。
+
+示例:
+  crawler sites --json
+  crawler plan  --sites rmrb --start 2026-09-01 --end 2026-09-03 --json
+  crawler crawl --sites rmrb,gmrb --start 2026-09-01 --end 2026-09-03
+  crawler crawl --sites 人民 --fast          # 站点可用 ID / 名称 / 别名
+
+{_IO_AND_EXIT}"""
+
+_SITES_EPILOG = """\
+列出站点 ID、名称与别名，供 --sites 参数使用。
+
+示例:
+  crawler sites
+  crawler sites --json"""
+
+_PLAN_EPILOG = """\
+不联网、不写盘：按输出目录中已存在的文件，判断每个「站点 × 日期」将抓取还是跳过。
+
+示例:
+  crawler plan --sites rmrb --start 2026-09-01 --end 2026-09-03
+  crawler plan --sites all --json
+
+--json 输出字段:
+  sites / unknown_sites / start_date / end_date / output_dir / format
+  days     [{site, date, path, exists, action}]，action 为 fetch 或 skip
+  summary  {"fetch": N, "skip": N}"""
+
+_CRAWL_EPILOG = """\
+示例:
+  crawler crawl                                    # 全部站点，最近 7 天
+  crawler crawl --sites rmrb --start 20260901 --end 20260903
+  crawler crawl --sites all -o ~/paper -f txt --workers 8 --fast
+  crawler crawl --sites nope --json                # 站点无法识别 → 退出码 1
+
+--json 输出字段:
+  ok              是否全部成功（无错误且无未识别站点）
+  sites           实际抓取的站点 ID
+  unknown_sites   无法识别的站点输入
+  output_dir      输出目录（绝对路径）
+  start_date / end_date / format / elapsed_secs
+  stats           days_attempted / days_success / days_skipped / days_empty /
+                  total_editions / total_articles / total_errors
+  files           本次写入的文件路径
+  skipped         因已存在而跳过的文件路径
+  errors          [{"site": ..., "date": ..., "message": ...}]"""
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="crawler",
         description="报刊下载器：下载人民日报/光明日报/经济日报/大众日报电子版",
+        epilog=_MAIN_EPILOG,
+        formatter_class=_HelpFormatter,
+        add_help=False,
     )
-    parser.add_argument("--version", action="version", version=f"报刊下载器 v{VERSION}")
-    sub = parser.add_subparsers(dest="command", metavar="命令")
+    _add_help_flag(parser)
+    _localize(parser)
+    parser.add_argument(
+        "--version",
+        action="version",
+        version=f"报刊下载器 v{VERSION}",
+        help="显示版本号并退出",
+    )
+    sub = parser.add_subparsers(dest="command", title="子命令")
 
-    p_sites = sub.add_parser("sites", help="列出可用站点")
+    p_sites = _subparser(sub, "sites", "列出可用站点", _SITES_EPILOG)
     p_sites.add_argument("--json", action="store_true", help="以 JSON 输出")
     p_sites.set_defaults(func=cmd_sites)
 
-    p_plan = sub.add_parser(
-        "plan", help="预演：列出将抓取/跳过的日期（不联网、不写盘）"
+    p_plan = _subparser(
+        sub, "plan", "预演：列出将抓取/跳过的日期（不联网、不写盘）", _PLAN_EPILOG
     )
     _add_download_args(p_plan)
     p_plan.add_argument("--json", action="store_true", help="以 JSON 输出")
     p_plan.set_defaults(func=cmd_plan)
 
-    p_crawl = sub.add_parser("crawl", help="执行下载")
+    p_crawl = _subparser(sub, "crawl", "执行下载", _CRAWL_EPILOG)
     _add_download_args(p_crawl)
     p_crawl.add_argument("--workers", type=int, default=5, help="并发线程数（默认 5）")
     p_crawl.add_argument(
@@ -120,8 +215,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_crawl.set_defaults(func=cmd_crawl)
 
-    p_interactive = sub.add_parser("interactive", help="进入交互式菜单")
-    p_interactive.set_defaults(func=cmd_interactive)
+    _subparser(sub, "interactive", "进入交互式菜单", "").set_defaults(
+        func=cmd_interactive
+    )
 
     return parser
 

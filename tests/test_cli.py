@@ -196,3 +196,47 @@ def test_crawl_unknown_site_returns_error_without_network(capsys):
     assert payload["ok"] is False
     assert payload["unknown_sites"] == ["nope"]
     assert payload["stats"]["days_attempted"] == 0
+
+
+# ---------------------------------------------------------------- 自描述帮助
+# `--help` 是本项目的正式文档，以下测试防止其内容被无声改掉。
+
+
+def _help(capsys, args):
+    with pytest.raises(SystemExit) as exc:
+        main(args)
+    assert exc.value.code == 0
+    return capsys.readouterr().out
+
+
+def test_main_help_lists_commands_examples_and_exit_codes(capsys):
+    out = _help(capsys, ["--help"])
+    for token in ["sites", "plan", "crawl", "interactive", "示例", "退出码", "--json"]:
+        assert token in out, f"顶层帮助缺少: {token}"
+    for code in ["0", "1", "2", "130"]:
+        assert code in out
+
+
+def test_subcommand_help_documents_params_and_json_fields(capsys):
+    crawl = _help(capsys, ["crawl", "--help"])
+    for token in ["--workers", "--fast", "stats", "files", "errors", "output_dir"]:
+        assert token in crawl, f"crawl 帮助缺少: {token}"
+
+    plan = _help(capsys, ["plan", "--help"])
+    for token in ["--sites", "days", "summary"]:
+        assert token in plan, f"plan 帮助缺少: {token}"
+
+    sites = _help(capsys, ["sites", "--help"])
+    assert "--json" in sites
+
+
+def test_help_examples_are_runnable_commands(capsys):
+    """帮助里的示例必须以 crawler 子命令开头，避免写出跑不通的示例。"""
+    out = _help(capsys, ["--help"])
+    examples = [
+        ln.strip() for ln in out.splitlines() if ln.strip().startswith("crawler ")
+    ]
+    assert examples
+    for line in examples:
+        command = line.split("#")[0].split()[1]
+        assert command in {"sites", "plan", "crawl", "interactive"}
