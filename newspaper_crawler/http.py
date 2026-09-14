@@ -1,17 +1,19 @@
 """HTTP 客户端封装：会话复用、超时、指数退避重试、404 静默、GBK 回退。
 
+重试交给 urllib3 的 ``Retry``（经 ``HTTPAdapter`` 挂载）：连接/读取错误与
+可重试状态码按指数退避重试，并遵循 ``Retry-After`` 响应头。
 对齐 Rust 版 src-tauri/src/crawler/http.rs 的 SafeRequest 语义。
 """
 
 from __future__ import annotations
 
 import logging
-import random
-import time
 from typing import Optional
 
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 DEFAULT_TIMEOUT = 30
 DEFAULT_MAX_RETRIES = 3
@@ -19,6 +21,9 @@ DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36"
 )
+
+# 值得重试的状态码（其余状态码重试无意义，直接返回 None）
+RETRY_STATUSES = (429, 500, 502, 503, 504)
 
 log = logging.getLogger("newspaper")
 
@@ -40,35 +45,37 @@ class HttpSession:
         self.session.headers.update({"User-Agent": user_agent})
         # 连接超时固定 5s（对齐 Rust connect_timeout）
         self.connect_timeout = 5.0
+        adapter = self._build_adapter()
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
+
+    def _build_adapter(self) -> HTTPAdapter:
+        """构造带退避重试的适配器（退避 1s、2s、4s…，对齐原 2^n 实现）。"""
+        retry = Retry(
+            total=self.max_retries,
+            connect=self.max_retries,
+            read=self.max_retries,
+            status=self.max_retries,
+            backoff_factor=1.0,
+            status_forcelist=RETRY_STATUSES,
+            allowed_methods=frozenset({"GET"}),
+            respect_retry_after_header=True,
+            raise_on_status=False,  # 耗尽重试后返回响应，交由 get() 判定
+        )
+        return HTTPAdapter(max_retries=retry)
 
     def get(self, url: str, silent_404: bool = False) -> Optional[requests.Response]:
-        """GET 请求；全部失败返回 None。404 且 silent_404 时静默返回 None。"""
-        for attempt in range(self.max_retries):
-            try:
-                resp = self.session.get(
-                    url, timeout=(self.connect_timeout, self.timeout)
-                )
-            except requests.RequestException as exc:  # 连接错误/超时等
-                if attempt + 1 < self.max_retries:
-                    wait = _backoff_secs(attempt)
-                    log.warning("请求异常: %s, %.1fs 后重试...", exc, wait)
-                    time.sleep(wait)
-                    continue
-                log.error("请求失败 [%s]: %s", url, exc)
-                return None
-
-            status = resp.status_code
-            if status == 200:
-                return resp
-            if status == 404 and silent_404:
-                return None
-            if attempt + 1 < self.max_retries:
-                wait = _backoff_secs(attempt)
-                if not (silent_404 and status == 404):
-                    log.warning("HTTP %s [%s], %.1fs 后重试...", status, url, wait)
-                time.sleep(wait)
-                continue
+        """GET 请求；非 200 或请求失败返回 None。404 且 silent_404 时不记日志。"""
+        try:
+            resp = self.session.get(url, timeout=(self.connect_timeout, self.timeout))
+        except requests.RequestException as exc:  # 重试耗尽后的连接/读取错误
+            log.error("请求失败 [%s]: %s", url, exc)
             return None
+
+        if resp.status_code == 200:
+            return resp
+        if not (silent_404 and resp.status_code == 404):
+            log.warning("HTTP %s [%s]", resp.status_code, url)
         return None
 
     def get_text(self, url: str, silent_404: bool = False) -> Optional[str]:
@@ -96,8 +103,3 @@ def _decode(resp: requests.Response) -> str:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
         return raw.decode("gbk", errors="replace")
-
-
-def _backoff_secs(attempt: int) -> float:
-    """2^n + 随机抖动。"""
-    return 2**attempt + random.random()

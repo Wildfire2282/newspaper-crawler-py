@@ -107,3 +107,5 @@ def configure_logging(verbose: bool = False) -> None:
     logger.handlers = [handler]
     logger.setLevel(logging.DEBUG if verbose else logging.WARNING)
     logger.propagate = False
+    # 重试由 urllib3 内部处理，verbose 时把它的重试日志一并接出来
+    logging.getLogger("urllib3").setLevel(logging.DEBUG if verbose else logging.WARNING)

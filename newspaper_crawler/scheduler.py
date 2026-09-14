@@ -23,7 +23,7 @@ from .util import weekday_cn
 log = logging.getLogger("newspaper")
 
 
-@dataclass
+@dataclass(slots=True)
 class ProgressEvent:
     """进度事件（kind 见字段注释）。UI 模块依赖此结构。"""
 

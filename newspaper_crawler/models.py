@@ -19,7 +19,7 @@ class OutputFormat(str, Enum):
         return self.value
 
 
-@dataclass
+@dataclass(slots=True)
 class ArticleRef:
     """文章引用（仅含 URL 与标题，抓取正文前的轻量结构）。"""
 
@@ -28,7 +28,7 @@ class ArticleRef:
     extra: dict = field(default_factory=dict)
 
 
-@dataclass
+@dataclass(slots=True)
 class Article:
     """文章（统一抓取结果）。"""
 
@@ -56,7 +56,7 @@ def is_full(item: ArticleOrRef) -> bool:
     return isinstance(item, Article)
 
 
-@dataclass
+@dataclass(slots=True)
 class Edition:
     """版面。"""
 
@@ -65,7 +65,7 @@ class Edition:
     articles: list = field(default_factory=list)  # list[ArticleOrRef]
 
 
-@dataclass
+@dataclass(slots=True)
 class CrawlStats:
     """单日/站点统计。"""
 
@@ -107,7 +107,7 @@ class CrawlStats:
         )
 
 
-@dataclass
+@dataclass(slots=True)
 class CrawlOptions:
     """抓取配置（对齐 Rust 版 base.rs CrawlOptions）。"""
 

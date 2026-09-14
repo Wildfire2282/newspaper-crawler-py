@@ -5,13 +5,21 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.12"]
+        python-version: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v7
 
@@ -21,7 +29,8 @@ jobs:
           enable-cache: true
 
       - name: Install
-        run: uv sync --locked
+        # --python 覆盖 .python-version，确保矩阵里每个版本都被真正测到
+        run: uv sync --locked --python ${{ matrix.python-version }}
 
       - name: Lint
         run: uv run ruff check .
@@ -33,4 +42,7 @@ jobs:
         run: uv run mypy newspaper_crawler
 
       - name: Test
-        run: uv run pytest -q
+        run: uv run pytest
+
+      - name: Build
+        run: uv build

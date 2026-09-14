@@ -19,7 +19,7 @@
 
 ## 环境要求
 
-- Python 3.10+（用 [uv](https://docs.astral.sh/uv/) 时无需自己装，uv 会按需下载）
+- Python 3.12+（用 [uv](https://docs.astral.sh/uv/) 时无需自己装，`uv sync` 会按 `.python-version` 准备）
 - [uv](https://docs.astral.sh/uv/)（推荐的依赖与环境管理工具）
 
 ## 安装
@@ -163,7 +163,7 @@ uv sync                        # 安装项目 + dev 依赖组
 uv run ruff check .            # 静态检查
 uv run ruff format .           # 格式化
 uv run mypy newspaper_crawler  # 类型检查
-uv run pytest -q               # 运行测试
+uv run pytest                  # 运行测试（默认带覆盖率报告）
 ```
 
 ## 支持站点
@@ -197,8 +197,12 @@ newspaper-crawler-py/
 ├── crawler.py                  # 兼容入口 shim → newspaper_crawler.cli
 ├── pyproject.toml              # 打包元数据 / 依赖 / ruff / mypy / pytest 配置
 ├── uv.lock                     # 锁定依赖版本，保证可复现
+├── .python-version             # 固定项目 Python（3.12）
+├── LICENSE                     # MIT
 ├── tests/                      # pytest 测试
-├── .github/workflows/ci.yml    # CI：ruff + mypy + pytest
+├── .github/
+│   ├── workflows/ci.yml        # CI：ruff + mypy + pytest + build
+│   └── dependabot.yml          # 依赖与 Actions 版本自动更新
 ├── newspaper_crawler/          # 核心库
 │   ├── cli.py                  # 非交互子命令（crawl / sites / plan）
 │   ├── tui.py                  # 交互式菜单（rich）
@@ -224,6 +228,10 @@ newspaper-crawler-py/
 - 后端由 Rust（reqwest + scraper）改为 Python（requests + BeautifulSoup4）
 - 抓取逻辑（版面/文章解析、新旧系统切换日期、重试与编码回退）与原版保持一致
 - 移除了系统托盘、桌面通知等桌面端专属功能
+
+## 许可证
+
+[MIT](LICENSE)
 
 ## 免责声明
 

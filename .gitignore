@@ -13,6 +13,11 @@ env/
 # 下载输出
 downloads/
 
+# 测试与覆盖率
+.coverage
+coverage.xml
+htmlcov/
+
 # IDE / 系统
 .idea/
 .vscode/
