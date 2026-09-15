@@ -16,10 +16,12 @@ from newspaper_crawler.cli import (
     _resolve_output_dir,
     _resolve_sites,
     build_parser,
+    build_parser_with_defaults,
     main,
 )
 from newspaper_crawler.models import CrawlStats
 from newspaper_crawler.scheduler import ProgressEvent
+from newspaper_crawler.state import DONE, FAILED, SKIPPED, StateStore
 
 
 class _Stdin:
@@ -30,11 +32,16 @@ class _Stdin:
         return self._tty
 
 
+def _parsed(*argv: str):
+    """Parse with the stored defaults applied, i.e. what ``main`` actually sees."""
+    return build_parser_with_defaults().parse_args(list(argv))
+
+
 # ---------------------------------------------------------------- argument parsing
 
 
 def test_crawl_defaults():
-    args = build_parser().parse_args(["crawl"])
+    args = _parsed("crawl")
     assert args.sites == "all"
     assert args.fmt == "md"
     assert args.workers == 5
@@ -44,18 +51,18 @@ def test_crawl_defaults():
 
 
 def test_crawl_no_skip_existing_flag():
-    args = build_parser().parse_args(["crawl", "--no-skip-existing"])
+    args = _parsed("crawl", "--no-skip-existing")
     assert args.skip_existing is False
 
 
 def test_crawl_site_workers_default_and_override():
-    assert build_parser().parse_args(["crawl"]).site_workers == 4
-    assert build_parser().parse_args(["crawl", "--site-workers", "1"]).site_workers == 1
+    assert _parsed("crawl").site_workers == 4
+    assert _parsed("crawl", "--site-workers", "1").site_workers == 1
 
 
 def test_format_choice_and_dates():
-    args = build_parser().parse_args(
-        ["crawl", "-f", "txt", "--start", "20260901", "--end", "2026-09-03"]
+    args = _parsed(
+        "crawl", "-f", "txt", "--start", "20260901", "--end", "2026-09-03"
     )
     assert args.fmt == "txt"
     assert args.start == date(2026, 9, 1)
@@ -249,7 +256,7 @@ def test_help_examples_are_runnable_commands(capsys):
     assert examples
     for line in examples:
         command = line.split("#")[0].split()[1]
-        assert command in {"sites", "plan", "crawl", "interactive"}
+        assert command in {"sites", "plan", "crawl", "runs", "interactive"}
 
 
 # ---------------------------------------------------------------- progress collection
@@ -302,7 +309,7 @@ def test_progress_collects_warnings_separately_from_errors():
 
 
 def test_crawl_json_includes_scheduler_warnings(monkeypatch, tmp_path, capsys):
-    def fake_run_multi(keys, opts, on_event, max_site_workers=4):
+    def fake_run_multi(keys, opts, on_event, max_site_workers=4, **kwargs):
         on_event(
             ProgressEvent(
                 kind="log",
@@ -376,3 +383,202 @@ def test_crawl_text_output_reports_completion(capsys):
     assert code == EXIT_ERROR
     assert "完成 ·" in captured.out
     assert "无法识别的站点" in captured.err
+
+
+# ---------------------------------------------------------------- persistence
+# The state file is isolated per test by the autouse ``isolated_state`` fixture in
+# conftest.py; these tests exercise the CLI's view of it.
+
+
+def _record_run(
+    store: StateStore,
+    tmp_path,
+    sites=("rmrb",),
+    start=date(2026, 9, 1),
+    end=date(2026, 9, 1),
+    status=DONE,
+) -> None:
+    store.start_run(list(sites), start, end, tmp_path, "md")
+    current = start
+    while current <= end:
+        for site in sites:
+            store.record_day(site, current, status)
+        current += timedelta(days=1)
+    store.finish_run({"days_success": 1})
+
+
+def test_crawl_remembers_the_settings_it_used(tmp_path, monkeypatch, capsys):
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-02",
+            "-o",
+            str(tmp_path),
+            "-f",
+            "txt",
+            "--site-workers",
+            "2",
+            "--json",
+            "--quiet",
+        ]
+    )
+    assert code == EXIT_OK
+    capsys.readouterr()
+
+    store = StateStore()
+    assert store.preferences.site_keys == ["rmrb"]
+    assert store.preferences.start_date == date(2026, 9, 1)
+    assert store.preferences.end_date == date(2026, 9, 2)
+    assert store.preferences.output_dir == str(tmp_path)
+    assert store.preferences.output_format == "txt"
+    assert store.preferences.site_workers == 2
+
+    # And the next invocation falls back to them instead of the built-in defaults.
+    args = build_parser_with_defaults().parse_args(["crawl"])
+    assert (args.sites, args.fmt, args.start, args.end) == (
+        "rmrb",
+        "txt",
+        date(2026, 9, 1),
+        date(2026, 9, 2),
+    )
+
+
+def test_crawl_writes_a_ledger_of_every_day(tmp_path, monkeypatch, capsys):
+    def fake_run_multi(keys, opts, on_event, max_site_workers=4, on_day=None, **kwargs):
+        on_day("rmrb", date(2026, 9, 1), DONE, tmp_path / "a.md", None)
+        on_day("rmrb", date(2026, 9, 2), FAILED, None, "抓取失败")
+        on_event(
+            ProgressEvent(
+                kind="day_error", site="人民日报", date=date(2026, 9, 2), message="抓取失败"
+            )
+        )
+        return CrawlStats(days_attempted=2, days_success=1, total_errors=1)
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", fake_run_multi)
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-02",
+            "-o",
+            str(tmp_path),
+            "--json",
+            "--quiet",
+        ]
+    )
+    capsys.readouterr()
+    assert code == EXIT_ERROR  # the failed day makes the run unsuccessful
+
+    store = StateStore()
+    assert store.last_run is not None
+    assert [d.status for d in store.last_run.days] == [DONE, FAILED]
+    assert [d.date.isoformat() for d in store.open_days()] == ["2026-09-02"]
+    assert store.history[0]["summary"][DONE] == 1
+    assert store.history[0]["summary"][FAILED] == 1
+
+
+def test_crawl_resume_without_a_ledger_is_an_error(capsys):
+    assert main(["crawl", "--resume", "--quiet", "--json"]) == EXIT_ERROR
+    assert "没有可续传的任务" in capsys.readouterr().err
+
+
+def test_crawl_resume_reruns_only_the_open_days(tmp_path, monkeypatch, capsys):
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("rmrb", "gmrb"), end=date(2026, 9, 2))
+    store.record_day("rmrb", date(2026, 9, 2), FAILED)
+
+    seen: list[tuple] = []
+
+    def fake_run_multi(keys, opts, on_event, max_site_workers=4, on_day=None, **kw):
+        seen.append(
+            (keys, opts.start_date, opts.end_date, kw.get("days_by_site"))
+        )
+        on_day("rmrb", date(2026, 9, 2), DONE, tmp_path / "b.md", None)
+        return CrawlStats(days_attempted=1, days_success=1)
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", fake_run_multi)
+    code = main(["crawl", "--resume", "--json", "--quiet"])
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == EXIT_OK
+    assert payload["resumed"] is True
+    assert payload["sites"] == ["rmrb"]  # only the site whose day was left open
+    assert seen == [
+        (["rmrb"], date(2026, 9, 2), date(2026, 9, 2), {"rmrb": {"2026-09-02"}})
+    ]
+    assert payload["output_dir"] == str(tmp_path)  # the ledger's dir, not the cwd
+    assert payload["format"] == "md"
+
+    # The resumed run replaced the ledger and left nothing open.
+    assert StateStore().open_days() == []
+
+
+def test_plan_resume_lists_only_open_days(tmp_path, capsys):
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("rmrb", "gmrb"), end=date(2026, 9, 2))
+    store.record_day("gmrb", date(2026, 9, 2), FAILED)
+
+    assert main(["plan", "--resume", "--json"]) == EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["resumed"] is True
+    assert payload["sites"] == ["gmrb"]
+    assert [d["date"] for d in payload["days"]] == ["2026-09-02"]
+    assert payload["days"][0]["status"] == FAILED
+    assert payload["summary"] == {"fetch": 1, "skip": 0}
+
+
+def test_plan_resume_without_a_ledger_is_an_error(capsys):
+    assert main(["plan", "--resume", "--json"]) == EXIT_ERROR
+    assert "没有可续传的任务" in capsys.readouterr().err
+
+
+def test_runs_reports_history_and_open_days(tmp_path, capsys):
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("rmrb",), end=date(2026, 9, 2))
+    store.record_day("rmrb", date(2026, 9, 2), FAILED)
+
+    assert main(["runs", "--json"]) == EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["open_count"] == 1
+    assert payload["open_days"] == [
+        {
+            "site": "rmrb",
+            "date": "2026-09-02",
+            "status": FAILED,
+            "path": None,
+            "error": None,
+        }
+    ]
+    assert payload["last_run"]["format"] == "md"
+    assert payload["last_run"]["summary"][DONE] == 1
+    assert payload["history"][0]["sites"] == ["rmrb"]
+    assert payload["state_file"].endswith("state.json")
+
+
+def test_runs_on_an_empty_ledger_is_successful(capsys):
+    assert main(["runs"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "暂无运行记录" in out
+
+
+def test_runs_table_output_lists_sites_and_status(tmp_path, capsys):
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("rmrb", "gmrb"), end=date(2026, 9, 1))
+    store.record_day("gmrb", date(2026, 9, 1), SKIPPED)
+
+    assert main(["runs"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "最近一次运行" in out
+    assert "人民日报" in out  # stored ids are rendered as display names
+    assert "跳过 1" in out

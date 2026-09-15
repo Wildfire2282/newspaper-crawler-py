@@ -20,6 +20,10 @@ from .formatter import Formatter, count_full
 from .http import HttpSession
 from .models import CrawlOptions, CrawlStats
 from .registry import lookup
+from .state import DONE as STATUS_DONE
+from .state import EMPTY as STATUS_EMPTY
+from .state import FAILED as STATUS_FAILED
+from .state import SKIPPED as STATUS_SKIPPED
 from .storage import atomic_write
 from .util import weekday_cn
 
@@ -50,10 +54,29 @@ class ProgressEvent:
 
 
 EventFn = Callable[[ProgressEvent], None]
+# site, date, status, path, error -> None; status is one of the state module's
+# day statuses, so a caller can persist a ledger without re-deriving it.
+DayFn = Callable[[str, date, str, Optional[Path], Optional[str]], None]
+# site key -> ISO dates to crawl for that site; absent site means "the whole range".
+DaySet = dict[str, set[str]]
 
 
-def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlStats:
+def run_site(
+    site: SiteCrawler,
+    opts: CrawlOptions,
+    on_event: EventFn,
+    on_day: Optional[DayFn] = None,
+    days: Optional[set[str]] = None,
+) -> CrawlStats:
     """Crawl every day in opts' range for one site.
+
+    Args:
+        on_day: optional ledger hook, invoked once per day after its outcome is
+            known (including skipped days). Reporting is separated from persisting:
+            this module never touches the state file itself.
+        days: optional ISO-date allow-list. Only these days are crawled, which is how
+            ``crawl --resume`` re-runs exactly the days left open by the last run. A
+            day outside the range is ignored.
 
     Returns:
         Counters for this site. Per-day failures (edition fetch error or write error)
@@ -64,11 +87,16 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
     """
     stats = CrawlStats()
     site_name = site.name
+    site_key = site.crawler_id
     formatter = Formatter(site.name, site.base_url)
     http = HttpSession()
 
     def emit(kind: str, **fields) -> None:
         on_event(ProgressEvent(kind=kind, site=site_name, **fields))
+
+    def report(day: date, status: str, path=None, error=None) -> None:
+        if on_day is not None:
+            on_day(site_key, day, status, path, error)
 
     def crawl_one_day(current: date) -> None:
         weekday = weekday_cn(current)
@@ -76,6 +104,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
 
         if opts.skip_existing and filepath.exists():
             stats.days_skipped += 1
+            report(current, STATUS_SKIPPED, filepath)
             emit(
                 "day_skip",
                 date=current,
@@ -105,6 +134,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
             # Count as an empty day, but warn: silence here would hide the breakage.
             stats.days_attempted += 1
             stats.days_empty += 1
+            report(current, STATUS_EMPTY, error=str(exc))
             emit(
                 "log",
                 level="warn",
@@ -119,6 +149,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
             log.error("抓取 %s %s 失败: %s", site_name, current, exc)
             stats.days_attempted += 1
             stats.total_errors += 1
+            report(current, STATUS_FAILED, error=str(exc))
             emit(
                 "day_error",
                 date=current,
@@ -129,6 +160,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
         if not editions:
             stats.days_attempted += 1
             stats.days_empty += 1
+            report(current, STATUS_EMPTY)
             emit(
                 "day_empty",
                 date=current,
@@ -150,6 +182,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
             log.error("写入文件失败 [%s]: %s", filepath, exc)
             stats.days_attempted += 1
             stats.total_errors += 1
+            report(current, STATUS_FAILED, error=f"写入失败: {exc}")
             emit(
                 "day_error",
                 date=current,
@@ -162,6 +195,7 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
         stats.total_editions += total_editions
         stats.total_articles += total_articles
         stats.total_errors += err_count
+        report(current, STATUS_DONE, filepath)
         extra = f" · {err_count} 错误" if err_count > 0 else ""
         emit(
             "day_done",
@@ -181,7 +215,8 @@ def run_site(site: SiteCrawler, opts: CrawlOptions, on_event: EventFn) -> CrawlS
     try:
         current = opts.start_date
         while current <= opts.end_date:
-            crawl_one_day(current)
+            if days is None or current.isoformat() in days:
+                crawl_one_day(current)
             current += timedelta(days=1)
             if current <= opts.end_date and opts.day_delay > 0:
                 time.sleep(opts.day_delay)
@@ -197,6 +232,8 @@ def run_multi(
     opts: CrawlOptions,
     on_event: EventFn,
     max_site_workers: int = 4,
+    on_day: Optional[DayFn] = None,
+    days_by_site: Optional[DaySet] = None,
 ) -> CrawlStats:
     """Crawl several sites concurrently and merge their counters.
 
@@ -207,10 +244,15 @@ def run_multi(
     Args:
         max_site_workers: upper bound on concurrently running sites, clamped to
             ``len(site_keys)``.
+        on_day: optional per-day ledger hook (see :func:`run_site`).
+        days_by_site: optional per-site day allow-list, for resuming exactly the days
+            a previous run left open. Sites missing from the mapping run their whole
+            range.
 
     Note:
         ``on_event`` is invoked under a lock, so handlers may assume they are never
-        called concurrently and need no synchronization of their own. A site that
+        called concurrently and need no synchronization of their own. ``on_day``
+        carries no such guarantee (it is meant for a thread-safe store). A site that
         fails outright does not abort the others.
     """
     started = time.monotonic()
@@ -234,7 +276,13 @@ def run_multi(
             )
             return None
         try:
-            return run_site(site, opts, emit)
+            return run_site(
+                site,
+                opts,
+                emit,
+                on_day,
+                days_by_site.get(key) if days_by_site else None,
+            )
         except Exception as exc:  # One failing site must not abort the others.
             log.error("站点 %s 运行失败: %s", site.name, exc)
             emit(

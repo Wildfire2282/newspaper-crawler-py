@@ -13,6 +13,10 @@ env/
 # Download output
 downloads/
 
+# Local crawl state: preferences and run ledger of the current project
+.newspaper-crawler.json
+.newspaper-crawler.json.bak
+
 # Tests and coverage
 .coverage
 coverage.xml

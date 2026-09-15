@@ -252,3 +252,107 @@ def test_run_multi_site_workers_one_is_serial(tmp_path, no_network, monkeypatch)
     stats = run_multi(["a", "b"], _opts(tmp_path), lambda ev: None, max_site_workers=1)
 
     assert stats.days_success == 2
+
+
+# ---------------------------------------------------------------- ledger hook
+
+
+def test_on_day_reports_each_outcome_once(tmp_path, no_network):
+    site = _Site(_one_edition)
+    calls = []
+    run_site(
+        site,
+        _opts(tmp_path, start=D1, end=D2),
+        lambda ev: None,
+        lambda *args: calls.append(args),
+    )
+
+    assert [c[0] for c in calls] == ["fake", "fake"]  # the crawler id, not the name
+    assert [c[1] for c in calls] == [D1, D2]
+    assert [c[2] for c in calls] == ["done", "done"]
+    assert calls[0][3] == site.day_filepath(D1, tmp_path, "md")
+    assert all(c[4] is None for c in calls)
+
+
+def test_on_day_reports_skip_empty_and_failure(tmp_path, no_network):
+    existing = tmp_path / "测试报" / "2026" / "09" / "2026-09-10.md"
+    existing.parent.mkdir(parents=True)
+    existing.write_text("旧内容", encoding="utf-8")
+
+    calls = []
+    run_site(
+        _Site(_one_edition),
+        _opts(tmp_path),
+        lambda ev: None,
+        lambda *args: calls.append(args),
+    )
+    assert calls[0][2] == "skipped"
+    assert calls[0][3] == existing
+
+    # A fresh directory: the previous file must not turn this into another skip.
+    empty_dir = tmp_path / "empty"
+    calls = []
+    run_site(
+        _Site(list),
+        _opts(empty_dir),
+        lambda ev: None,
+        lambda *args: calls.append(args),
+    )
+    assert calls[0][2] == "empty"
+
+    failed_dir = tmp_path / "failed"
+    calls = []
+    run_site(
+        _Site(_one_edition, editions_error=True),
+        _opts(failed_dir),
+        lambda ev: None,
+        lambda *args: calls.append(args),
+    )
+    assert calls[0][2] == "failed"
+    assert "版面炸了" in calls[0][4]
+
+
+def test_on_day_is_optional(tmp_path, no_network):
+    stats = run_site(_Site(_one_edition), _opts(tmp_path), lambda ev: None)
+
+    assert stats.days_success == 1
+
+
+def test_day_allow_list_restricts_the_crawl(tmp_path, no_network):
+    site = _Site(_one_edition)
+    calls = []
+    stats = run_site(
+        site,
+        _opts(tmp_path, start=D1, end=D2),
+        lambda ev: None,
+        lambda *args: calls.append(args),
+        days={"2026-09-11"},
+    )
+
+    assert stats.days_success == 1
+    assert [c[1] for c in calls] == [D2]
+    assert site.day_filepath(D1, tmp_path, "md").exists() is False
+    assert site.day_filepath(D2, tmp_path, "md").exists() is True
+
+
+def test_run_multi_groups_the_allow_list_per_site(tmp_path, no_network, monkeypatch):
+    # The ledger is keyed by crawler id, so the two sites need distinct ids.
+    sites = {"a": _Site(_one_edition, name="甲报"), "b": _Site(_one_edition, name="乙报")}
+    sites["a"].crawler_id, sites["b"].crawler_id = "a", "b"
+    monkeypatch.setattr(scheduler, "lookup", sites.get)
+
+    calls = []
+    stats = run_multi(
+        ["a", "b"],
+        _opts(tmp_path, start=D1, end=D2),
+        lambda ev: None,
+        on_day=lambda *args: calls.append(args),
+        days_by_site={"a": {"2026-09-10"}},
+    )
+
+    assert stats.days_success == 3  # one day for a, both for b
+    assert sorted((c[0], c[1]) for c in calls) == [
+        ("a", D1),
+        ("b", D1),
+        ("b", D2),
+    ]
