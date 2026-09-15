@@ -1,8 +1,9 @@
-"""CLI 测试：参数解析、JSON 输出、退出码、模式判别。"""
+"""CLI tests: argument parsing, JSON output, exit codes, mode selection."""
 
 import json
 import sys
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 
@@ -11,11 +12,14 @@ from newspaper_crawler.cli import (
     EXIT_ERROR,
     EXIT_OK,
     EXIT_USAGE,
+    _Progress,
     _resolve_output_dir,
     _resolve_sites,
     build_parser,
     main,
 )
+from newspaper_crawler.models import CrawlStats
+from newspaper_crawler.scheduler import ProgressEvent
 
 
 class _Stdin:
@@ -26,7 +30,7 @@ class _Stdin:
         return self._tty
 
 
-# ---------------------------------------------------------------- 参数解析
+# ---------------------------------------------------------------- argument parsing
 
 
 def test_crawl_defaults():
@@ -42,6 +46,11 @@ def test_crawl_defaults():
 def test_crawl_no_skip_existing_flag():
     args = build_parser().parse_args(["crawl", "--no-skip-existing"])
     assert args.skip_existing is False
+
+
+def test_crawl_site_workers_default_and_override():
+    assert build_parser().parse_args(["crawl"]).site_workers == 4
+    assert build_parser().parse_args(["crawl", "--site-workers", "1"]).site_workers == 1
 
 
 def test_format_choice_and_dates():
@@ -71,12 +80,12 @@ def test_invalid_date_exits_two():
     assert exc.value.code == 2
 
 
-# ---------------------------------------------------------------- 工具函数
+# ---------------------------------------------------------------- helpers
 
 
 def test_resolve_sites_all_and_aliases():
     sites, unknown = _resolve_sites("all")
-    # 按站点中文名排序
+    # Sorted by the Chinese site name.
     assert [s.crawler_id for s in sites] == ["rmrb", "gmrb", "dzrb", "jjrb"]
     assert unknown == []
 
@@ -100,7 +109,7 @@ def test_resolve_output_dir_default_and_relative(tmp_path, monkeypatch):
     assert _resolve_output_dir(str(tmp_path / "abs")) == tmp_path / "abs"
 
 
-# ---------------------------------------------------------------- 模式判别
+# ---------------------------------------------------------------- mode selection
 
 
 def test_no_args_non_tty_is_usage_error(monkeypatch, capsys):
@@ -116,7 +125,7 @@ def test_no_args_tty_enters_tui(monkeypatch):
     assert main([]) == EXIT_OK
 
 
-# ---------------------------------------------------------------- 子命令
+# ---------------------------------------------------------------- subcommands
 
 
 def test_sites_json(capsys):
@@ -198,8 +207,9 @@ def test_crawl_unknown_site_returns_error_without_network(capsys):
     assert payload["stats"]["days_attempted"] == 0
 
 
-# ---------------------------------------------------------------- 自描述帮助
-# `--help` 是本项目的正式文档，以下测试防止其内容被无声改掉。
+# ---------------------------------------------------------------- self-documenting help
+# ``--help`` is this project's canonical documentation; these tests keep it from
+# being changed silently.
 
 
 def _help(capsys, args):
@@ -231,7 +241,7 @@ def test_subcommand_help_documents_params_and_json_fields(capsys):
 
 
 def test_help_examples_are_runnable_commands(capsys):
-    """帮助里的示例必须以 crawler 子命令开头，避免写出跑不通的示例。"""
+    """Every example in the help must start with a real crawler subcommand."""
     out = _help(capsys, ["--help"])
     examples = [
         ln.strip() for ln in out.splitlines() if ln.strip().startswith("crawler ")
@@ -240,3 +250,129 @@ def test_help_examples_are_runnable_commands(capsys):
     for line in examples:
         command = line.split("#")[0].split()[1]
         assert command in {"sites", "plan", "crawl", "interactive"}
+
+
+# ---------------------------------------------------------------- progress collection
+
+
+def test_progress_collects_files_skipped_and_errors():
+    progress = _Progress(None)
+    progress(
+        ProgressEvent(
+            kind="day_done", site="人民日报", path=Path("/out/a.md"), message="m"
+        )
+    )
+    progress(
+        ProgressEvent(
+            kind="day_skip", site="人民日报", path=Path("/out/b.md"), message="m"
+        )
+    )
+    progress(
+        ProgressEvent(
+            kind="day_error", site="人民日报", date=date(2026, 9, 1), message="e"
+        )
+    )
+    progress(ProgressEvent(kind="log", level="error", site="人民日报", message="x"))
+
+    assert progress.files == ["/out/a.md"]
+    assert progress.skipped == ["/out/b.md"]
+    assert progress.errors == [
+        {"site": "人民日报", "date": "2026-09-01", "message": "e"},
+        {"site": "人民日报", "date": None, "message": "x"},
+    ]
+    assert progress.warnings == []
+
+
+def test_progress_collects_warnings_separately_from_errors():
+    progress = _Progress(None)
+    progress(
+        ProgressEvent(
+            kind="log",
+            level="warn",
+            site="人民日报",
+            date=date(2026, 9, 1),
+            message="索引页结构疑似已变化",
+        )
+    )
+
+    assert progress.errors == []  # warnings are not errors and do not affect ok
+    assert progress.warnings == [
+        {"site": "人民日报", "date": "2026-09-01", "message": "索引页结构疑似已变化"}
+    ]
+
+
+def test_crawl_json_includes_scheduler_warnings(monkeypatch, tmp_path, capsys):
+    def fake_run_multi(keys, opts, on_event, max_site_workers=4):
+        on_event(
+            ProgressEvent(
+                kind="log",
+                level="warn",
+                site="人民日报",
+                date=date(2026, 9, 1),
+                message="索引页结构疑似已变化",
+            )
+        )
+        return CrawlStats(days_attempted=1, days_empty=1)
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", fake_run_multi)
+
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-01",
+            "-o",
+            str(tmp_path),
+            "--json",
+            "--quiet",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == EXIT_OK  # warnings must not affect ok
+    assert payload["ok"] is True
+    assert payload["warnings"] == [
+        {"site": "人民日报", "date": "2026-09-01", "message": "索引页结构疑似已变化"}
+    ]
+
+
+# ---------------------------------------------------------------- plain-text output
+
+
+def test_sites_table_output(capsys):
+    assert main(["sites"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "可用站点" in out
+    assert "人民日报" in out
+
+
+def test_plan_text_output_lists_fetch_days(tmp_path, capsys):
+    code = main(
+        [
+            "plan",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-01",
+            "-o",
+            str(tmp_path),
+        ]
+    )
+    assert code == EXIT_OK
+    out = capsys.readouterr().out
+    assert "将抓取 1 天" in out
+    assert "fetch  2026-09-01" in out
+
+
+def test_crawl_text_output_reports_completion(capsys):
+    code = main(["crawl", "--sites", "nope"])
+    captured = capsys.readouterr()
+    assert code == EXIT_ERROR
+    assert "完成 ·" in captured.out
+    assert "无法识别的站点" in captured.err

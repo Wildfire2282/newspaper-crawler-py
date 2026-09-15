@@ -1,4 +1,4 @@
-"""格式化测试：Markdown / 纯文本结构与锚点去重。"""
+"""formatter tests: Markdown/plain structure and anchor de-duplication."""
 
 from datetime import date
 
@@ -15,7 +15,7 @@ def _editions() -> list[Edition]:
             name="要闻",
             articles=[
                 Article(title="标题甲", paragraphs=["第一段"], author="记者甲"),
-                Article(title="标题甲", paragraphs=["第二段"]),  # 故意重名
+                Article(title="标题甲", paragraphs=["第二段"]),  # duplicate on purpose
                 ArticleRef(title="未抓取", url="http://example.com/a"),
             ],
         ),

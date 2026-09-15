@@ -1,8 +1,8 @@
-"""站点注册表测试：按 id / 名称 / 别名查找。"""
+"""registry tests: lookup by id / name / alias."""
 
 import pytest
 
-from newspaper_crawler.registry import all_sites, find_crawler, lookup
+from newspaper_crawler.registry import all_sites, lookup
 
 
 def test_all_sites_sorted_by_name():
@@ -34,7 +34,3 @@ def test_lookup_by_id_name_alias(key, expected_id):
 @pytest.mark.parametrize("key", ["nope", "不存在", ""])
 def test_lookup_unknown_returns_none(key):
     assert lookup(key) is None
-
-
-def test_find_crawler_is_alias_of_lookup():
-    assert find_crawler("rmrb") is lookup("rmrb")

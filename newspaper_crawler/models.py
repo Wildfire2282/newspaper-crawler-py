@@ -1,4 +1,4 @@
-"""统一数据模型（对齐 Rust 版 src-tauri/src/crawler/model.rs）。"""
+"""Unified data models (mirrors Rust src-tauri/src/crawler/model.rs)."""
 
 from __future__ import annotations
 
@@ -6,11 +6,11 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Union
+from typing import Any, TypeGuard, Union
 
 
 class OutputFormat(str, Enum):
-    """输出格式。"""
+    """Output file format."""
 
     MD = "md"
     TXT = "txt"
@@ -21,53 +21,53 @@ class OutputFormat(str, Enum):
 
 @dataclass(slots=True)
 class ArticleRef:
-    """文章引用（仅含 URL 与标题，抓取正文前的轻量结构）。"""
+    """Lightweight article reference: title and URL only, before the body is fetched."""
 
     title: str = ""
     url: str = ""
-    extra: dict = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
 class Article:
-    """文章（统一抓取结果）。"""
+    """Article body: the unified fetch result."""
 
     title: str = ""
-    yinti: str = ""  # 引题 / 肩题
-    subtitle: str = ""  # 副题
+    yinti: str = ""  # kicker: lead-in line above the main headline
+    subtitle: str = ""  # subhead
     author: str = ""
-    paragraphs: list = field(default_factory=list)  # list[str]
+    paragraphs: list[str] = field(default_factory=list)
     image_desc: str = ""
     url: str = ""
-    extra: dict = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
-# 版面文章条目：引用（未抓取）或完整文章
+# Edition entry: either an unfetched reference or a fully fetched article.
 ArticleOrRef = Union[ArticleRef, Article]
 
 
 def art_title(item: ArticleOrRef) -> str:
-    """统一取条目标题。"""
+    """Return the entry title; both union members expose ``title``."""
     return item.title
 
 
-def is_full(item: ArticleOrRef) -> bool:
-    """是否已抓取为完整文章。"""
+def is_full(item: ArticleOrRef) -> TypeGuard[Article]:
+    """True if the entry holds a fetched Article; narrows the type for callers."""
     return isinstance(item, Article)
 
 
 @dataclass(slots=True)
 class Edition:
-    """版面。"""
+    """One newspaper edition (a single page)."""
 
     num: int = 0
     name: str = ""
-    articles: list = field(default_factory=list)  # list[ArticleOrRef]
+    articles: list[ArticleOrRef] = field(default_factory=list)
 
 
 @dataclass(slots=True)
 class CrawlStats:
-    """单日/站点统计。"""
+    """Counters for one run, merged across sites and days."""
 
     days_attempted: int = 0
     days_success: int = 0
@@ -87,7 +87,7 @@ class CrawlStats:
         self.total_errors += other.total_errors
 
     def as_dict(self) -> dict:
-        """转为可 JSON 序列化的字典。"""
+        """Return a JSON-serializable snapshot of the counters."""
         return {
             "days_attempted": self.days_attempted,
             "days_success": self.days_success,
@@ -109,13 +109,13 @@ class CrawlStats:
 
 @dataclass(slots=True)
 class CrawlOptions:
-    """抓取配置（对齐 Rust 版 base.rs CrawlOptions）。"""
+    """Crawl configuration (mirrors Rust base.rs CrawlOptions)."""
 
     start_date: date
     end_date: date
     output_dir: Path
     output_format: OutputFormat = OutputFormat.MD
     max_workers: int = 5
-    article_delay: tuple = (0.1, 0.3)  # (min, max) 秒
+    article_delay: tuple[float, float] = (0.1, 0.3)  # (min, max) seconds
     day_delay: float = 0.5
     skip_existing: bool = True

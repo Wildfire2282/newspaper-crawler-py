@@ -1,35 +1,40 @@
-"""人民日报爬虫。
+"""People's Daily crawler.
 
-网址: http://paper.people.com.cn/rmrb
+Base URL: http://paper.people.com.cn/rmrb
 
-- 2024 年 12 月 1 日起新版系统（/pc/layout/YYYYMM/DD/node_NN.html）
-- 2024 年 11 月 30 日及以前旧版系统（/html/YYYY-MM/DD/nbs.D110000renmrb_NN.htm）
+Two upstream systems, selected by date:
+- new (d >= 2024-12-01): /pc/layout/YYYYMM/DD/node_NN.html
+- old (d <= 2024-11-30): /html/YYYY-MM/DD/nbs.D110000renmrb_NN.htm
 
-逐条对齐 Rust 版 src-tauri/src/crawler/rmrb.rs。
+Mirrors Rust src-tauri/src/crawler/rmrb.rs.
 """
 
 from __future__ import annotations
 
 import re
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Optional
 
 from bs4 import BeautifulSoup
 
-from ..base import SiteCrawler
+from ..base import EmptyIndexError, SiteCrawler, fetch_texts
 from ..http import HttpSession
 from ..models import Article, ArticleRef, Edition
-from ..util import join_url, meta_content
+from ..util import join_url, make_soup, meta_content, page_numbers_from_links
 
 BASE_URL = "http://paper.people.com.cn/rmrb"
 SWITCH_DATE = date(2024, 12, 1)
 
-RE_NODE_HREF = re.compile(r"node_\d+\.html")
+RE_NODE_HREF = re.compile(r"node_(\d+)\.html")
 RE_ED_TEXT = re.compile(r"(\d+)版[：:](.+)")
 RE_CONTENT_HREF = re.compile(r"content_\d+\.html")
 RE_TITLE_SUFFIX = re.compile(r"[-—].*?(人民日报|人民网).*$")
 RE_OLD_ED = re.compile(r"第\d+版[:：](.+?)(?:_|$)")
+RE_OLD_PAGE_HREF = re.compile(r"nbs\.D110000renmrb_(\d+)\.htm")
+
+# Page-count ceiling (the old system has at most 20 pages). Consulted only as a
+# fallback when the navigation links reveal no page numbers.
+MAX_PAGES = 20
 
 
 def _new_layout_url(d: date, page: int) -> str:
@@ -46,20 +51,13 @@ def _old_layout_url(d: date, page: int) -> str:
     )
 
 
-def _fetch_texts(
-    http: HttpSession, urls: list[str], silent_404: bool
-) -> list[Optional[str]]:
-    """并发抓取一批页面，按 urls 顺序返回（失败项为 None，对齐 Rust FuturesUnordered 容错）。"""
-    if not urls:
-        return []
-    with ThreadPoolExecutor(max_workers=min(16, len(urls))) as pool:
-        return list(pool.map(lambda u: http.get_text(u, silent_404=silent_404), urls))
-
-
 def _old_article_refs(soup: BeautifulSoup, base: str) -> list[ArticleRef]:
-    """旧版版面页：收集 href 含 nw.D110000renmrb 的 <a>。
+    """Old-system layout page: collect anchors whose href contains nw.D110000renmrb.
 
-    标题 = 把 <a> 内所有 <br> 替换为空格后的纯文本（对齐 Rust 的 br→空格再取 text）。
+    Title = the anchor text with every <br> replaced by a space (mirrors the Rust
+    br-to-space-then-text behavior).
+
+    Note: mutates the matched anchors in place.
     """
     refs: list[ArticleRef] = []
     for a in soup.select('a[href*="nw.D110000renmrb"]'):
@@ -76,8 +74,8 @@ def _old_article_refs(soup: BeautifulSoup, base: str) -> list[ArticleRef]:
 
 
 def _parse_old_edition(d: date, page: int, html: str) -> Optional[Edition]:
-    """解析单个旧版版面页；无文章时返回 None。"""
-    doc = BeautifulSoup(html, "html.parser")
+    """Parse one old-system layout page; None when it yields no article."""
+    doc = make_soup(html)
     name = f"第{page:02d}版"
     t = doc.find("title")
     if t is not None:
@@ -96,8 +94,9 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
     if html is None:
         return []
 
-    # 第 1 步：从版面导航页收集 (版号, 版名)，按版号去重（保持首次出现顺序）
-    doc = BeautifulSoup(html, "html.parser")
+    # Step 1: collect (page number, page name) from the layout navigation,
+    # de-duplicated by page number, first occurrence wins.
+    doc = make_soup(html)
     edition_refs: list[tuple[int, str]] = []
     seen: set[int] = set()
     for a in doc.find_all("a"):
@@ -113,11 +112,13 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
         seen.add(num)
         edition_refs.append((num, m.group(2).strip()))
     if not edition_refs:
-        return []
+        raise EmptyIndexError("新版版面页未解析出任何版面导航")
 
-    # 第 2 步：并发抓取各版面页（Rust 版此处 silent_404=False）
+    # Step 2: fetch the layout pages concurrently. Page 1 was already fetched above,
+    # so serve it from the cache rather than requesting it twice.
+    cache: dict[str, str] = {url1: html}
     urls = [_new_layout_url(d, num) for num, _ in edition_refs]
-    bodies = _fetch_texts(http, urls, silent_404=False)
+    bodies = fetch_texts(http, urls, silent_404=False, max_workers=16, cache=cache)
     results = [
         (num, name, body)
         for (num, name), body in zip(edition_refs, bodies)
@@ -125,10 +126,10 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
     ]
     results.sort(key=lambda x: x[0])
 
-    # 第 3 步：从版面页收集文章引用
+    # Step 3: collect article references from each layout page.
     editions: list[Edition] = []
     for num, name, body in results:
-        edoc = BeautifulSoup(body, "html.parser")
+        edoc = make_soup(body)
         articles: list[ArticleRef] = []
         base = _new_layout_url(d, num)
         for a in edoc.find_all("a"):
@@ -150,13 +151,20 @@ def _get_old_editions(http: HttpSession, d: date) -> list[Edition]:
 
     first = _parse_old_edition(d, 1, html)
     if first is None:
-        return []
+        raise EmptyIndexError("旧版第 1 版页未解析出任何文章")
     editions: list[Edition] = [first]
 
-    # 第 2~20 版并发抓取（silent_404=True）
-    pages = list(range(2, 21))
+    # Remaining page numbers come from the navigation links when discoverable;
+    # otherwise fall back to probing 2..MAX_PAGES.
+    doc = make_soup(html)
+    pages = [
+        p for p in page_numbers_from_links(doc, RE_OLD_PAGE_HREF, MAX_PAGES) if p >= 2
+    ]
+    if not pages:
+        pages = list(range(2, MAX_PAGES + 1))
+
     urls = [_old_layout_url(d, p) for p in pages]
-    bodies = _fetch_texts(http, urls, silent_404=True)
+    bodies = fetch_texts(http, urls, silent_404=True, max_workers=16)
     for p, body in zip(pages, bodies):
         if body is None:
             continue
@@ -171,7 +179,7 @@ def _fetch_new_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
     html = http.get_text(r.url, silent_404=False)
     if html is None:
         return None
-    doc = BeautifulSoup(html, "html.parser")
+    doc = make_soup(html)
     article_div = doc.select_one("div.article")
 
     yinti = ""
@@ -198,7 +206,8 @@ def _fetch_new_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
             else:
                 author = s
 
-    # 标题回退：h1 → <title> → 引用标题，最后去掉 "-人民日报" 类后缀
+    # Title fallback chain: h1 -> <title> -> reference title, then strip a
+    # "-人民日报"-style suffix.
     if not title:
         t = doc.find("title")
         if t is not None:
@@ -207,7 +216,7 @@ def _fetch_new_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
         title = r.title
     title = RE_TITLE_SUFFIX.sub("", title).strip()
 
-    # 正文：div#ozoom 内所有 <p>
+    # Body: every <p> inside div#ozoom.
     paragraphs: list[str] = []
     ozoom = doc.select_one("div#ozoom")
     if ozoom is not None:
@@ -228,9 +237,9 @@ def _fetch_old_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
     html = http.get_text(r.url, silent_404=False)
     if html is None:
         return None
-    doc = BeautifulSoup(html, "html.parser")
+    doc = make_soup(html)
 
-    # 标题：meta description（>5 字符）→ <title>（>5 字符）→ 引用标题
+    # Title: meta description (>5 bytes) -> <title> (>5 bytes) -> reference title.
     title = r.title
     desc = meta_content(doc, "description")
     if len(desc.encode("utf-8")) > 5:
@@ -242,7 +251,7 @@ def _fetch_old_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
             if len(s.encode("utf-8")) > 5:
                 title = s
 
-    # 正文容器依次尝试 .text_c / .c_c / #ozoom / .content
+    # Body container, tried in order.
     container = (
         doc.select_one(".text_c")
         or doc.select_one(".c_c")
@@ -261,7 +270,7 @@ def _fetch_old_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
 
 
 class RenminCrawler(SiteCrawler):
-    """人民日报站点爬虫（2024-12-01 起新老系统自动切换）。"""
+    """People's Daily crawler; switches new/old system at 2024-12-01."""
 
     crawler_id = "rmrb"
     name = "人民日报"

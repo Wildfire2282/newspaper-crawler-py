@@ -5,27 +5,27 @@ __pycache__/
 build/
 dist/
 
-# 虚拟环境
+# Virtual environments
 .venv/
 venv/
 env/
 
-# 下载输出
+# Download output
 downloads/
 
-# 测试与覆盖率
+# Tests and coverage
 .coverage
 coverage.xml
 htmlcov/
 
-# IDE / 系统
+# IDE / OS
 .idea/
 .vscode/
 .DS_Store
 
-# AI 工具本地状态（同 .vscode/，不入库）
+# Local state of AI tooling (same as .vscode/, not committed)
 .commandcode/
 
-# 环境变量与密钥
+# Environment variables and secrets
 .env
 *.env

@@ -1,6 +1,7 @@
-"""站点爬虫抽象基类与并发抓取工具。
+"""Site crawler ABC and concurrent fetch helpers.
 
-对齐 Rust 版 src-tauri/src/crawler/base.rs 的 SiteCrawler trait 与 BaseCrawler。
+Mirrors the Rust implementation (src-tauri/src/crawler/base.rs: SiteCrawler trait
+and BaseCrawler).
 """
 
 from __future__ import annotations
@@ -12,36 +13,89 @@ from abc import ABC, abstractmethod
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Optional
 
 from .http import HttpSession
 from .models import Article, ArticleRef, Edition
 
 log = logging.getLogger("newspaper")
 
-ProgressFn = Callable[[int, int], None]  # (done, total)
+
+class EmptyIndexError(Exception):
+    """Index page was retrieved but yielded zero editions.
+
+    Contract: raised only when the index page WAS fetched and its structure could
+    not be parsed. Signals an upstream site redesign, as opposed to a genuine
+    no-paper day (empty list, index unreachable). Without this distinction a
+    redesign would be silently reported as "no paper".
+    """
+
+
+def fetch_texts(
+    http: HttpSession,
+    urls: list[str],
+    silent_404: bool,
+    max_workers: int = 8,
+    cache: Optional[dict[str, str]] = None,
+) -> list[Optional[str]]:
+    """Fetch pages concurrently and return results positionally aligned with urls.
+
+    Args:
+        cache: optional url -> body map. URLs already present are not requested;
+            successful fetches are written back. Lets callers avoid re-requesting a
+            page already retrieved for an earlier purpose (e.g. layout page 1 read
+            first for navigation parsing, then again as an edition page).
+
+    Returns:
+        One entry per url, same order; failed fetches map to None. Duplicate urls
+        within ``urls`` are requested at most once.
+    """
+    if not urls:
+        return []
+    if cache is None:
+        cache = {}
+    pending = list(dict.fromkeys(u for u in urls if u not in cache))
+    if pending:
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as pool:
+            fetched = pool.map(
+                lambda u: http.get_text(u, silent_404=silent_404), pending
+            )
+            for url, body in zip(pending, fetched):
+                if body is not None:
+                    cache[url] = body
+    return [cache.get(u) for u in urls]
 
 
 class SiteCrawler(ABC):
-    """站点爬虫接口。子类实现 get_editions / fetch_article。"""
+    """Per-site crawler interface. Subclasses implement get_editions/fetch_article."""
 
     crawler_id: str = ""
     name: str = ""
     base_url: str = ""
-    aliases: Optional[list] = None
+    aliases: Optional[list[str]] = None
 
     @abstractmethod
     def get_editions(self, http: HttpSession, d: date) -> list[Edition]:
-        """获取指定日期的版面列表；无报纸/访问失败返回空列表。"""
+        """Return the editions published on ``d``.
+
+        Returns:
+            Editions in ascending page order. Empty list when no paper was published
+            on ``d`` or the index page could not be reached.
+
+        Raises:
+            EmptyIndexError: index page retrieved but its structure was not
+                recognized, so the scheduler can distinguish "no paper" from a
+                broken parser instead of reporting both as "no paper".
+        """
 
     @abstractmethod
     def fetch_article(
         self, http: HttpSession, aref: ArticleRef, d: date
     ) -> Optional[Article]:
-        """抓取单篇文章正文；失败返回 None。"""
+        """Return the full article body, or None if the fetch/parse failed."""
 
     def day_filepath(self, d: date, output_dir: Path, ext: str) -> Path:
-        """当日文件路径：<输出目录>/<站名>/<年>/<月>/<YYYY-MM-DD>.<ext>"""
+        """Path of one day's output: <output_dir>/<name>/<year>/<MM>/<date>.<ext>."""
         return (
             Path(output_dir)
             / self.name
@@ -52,7 +106,7 @@ class SiteCrawler(ABC):
 
 
 class BaseCrawler:
-    """给 Edition 列表填充正文（串行/并发）。"""
+    """Populate Edition articles with full bodies, serially or concurrently."""
 
     @staticmethod
     def crawl_day(
@@ -60,13 +114,19 @@ class BaseCrawler:
         http: HttpSession,
         d: date,
         max_workers: int = 5,
-        article_delay: tuple = (0.1, 0.3),
-        on_progress: Optional[ProgressFn] = None,
+        article_delay: tuple[float, float] = (0.1, 0.3),
     ) -> tuple[list[Edition], int]:
-        """抓取一天内所有文章正文，返回 (editions, errors)。
+        """Fetch every article body for one day.
 
-        editions 中引用条目原地替换为完整文章；抓取失败/返回 None 计入 errors。
-        并发模式（max_workers>1）不做请求间延迟，与 Rust 版行为一致。
+        Returns:
+            (editions, errors). Each ArticleRef is replaced in place by an Article
+            when its fetch succeeded; ``errors`` counts fetches that returned None or
+            raised.
+
+        Note:
+            Concurrent mode (max_workers > 1) applies no inter-request delay, matching
+            the Rust implementation: per-host request rate is bounded by
+            ``max_workers`` alone. ``article_delay`` is honored only in serial mode.
         """
         editions = site.get_editions(http, d)
         if not editions:
@@ -80,27 +140,22 @@ class BaseCrawler:
         if not tasks:
             return editions, 0
 
-        total = len(tasks)
-        done = 0
         errors = 0
 
         def work(ed_idx: int, art_idx: int, aref: ArticleRef):
             try:
                 return ed_idx, art_idx, site.fetch_article(http, aref, d)
-            except Exception as exc:  # 单篇文章异常不中断整日
+            except Exception as exc:  # One failing article must not abort the day.
                 log.warning("抓取文章出错 [%s]: %s", aref.title, exc)
                 return ed_idx, art_idx, None
 
         def apply(result) -> None:
-            nonlocal errors, done
+            nonlocal errors
             ed_idx, art_idx, article = result
             if article is not None:
                 editions[ed_idx].articles[art_idx] = article
             else:
                 errors += 1
-            done += 1
-            if on_progress is not None:
-                on_progress(done, total)
 
         if max_workers <= 1:
             for task in tasks:
@@ -115,8 +170,8 @@ class BaseCrawler:
         return editions, errors
 
 
-def _sleep_article(delay: tuple) -> None:
-    """文章间随机延迟（仅串行模式使用，与 Rust 版一致）。"""
+def _sleep_article(delay: tuple[float, float]) -> None:
+    """Sleep for a uniform random value in ``delay``; serial mode only."""
     lo, hi = delay
     if hi > 0:
         time.sleep(random.uniform(lo, hi))

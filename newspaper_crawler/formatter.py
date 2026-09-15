@@ -1,6 +1,6 @@
-"""Markdown / 纯文本格式化。
+"""Markdown / plain-text rendering.
 
-对齐 Rust 版 src-tauri/src/crawler/format.rs 的 Formatter。
+Mirrors Rust src-tauri/src/crawler/format.rs (Formatter).
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ DIVIDER = "  ----------------------------------------"
 
 
 class Formatter:
-    """站点输出格式化器：生成 Markdown 或纯文本日报文件。"""
+    """Renders one day's editions as a Markdown or plain-text document."""
 
     def __init__(self, name: str, base_url: str):
         self.name = name
@@ -82,7 +82,7 @@ class Formatter:
         return lines
 
     # ------------------------------------------------------------------ #
-    # 纯文本
+    # Plain text
     # ------------------------------------------------------------------ #
     def plain(self, d: date, editions: list[Edition]) -> str:
         out = f"{self.name}\n{d.year:04d}年{d.month:02d}月{d.day:02d}日\n\n"
@@ -98,18 +98,17 @@ class Formatter:
             for art in ed.articles:
                 if not is_full(art):
                     continue
-                a: Article = art
-                if a.yinti:
-                    out += f"  [{a.yinti}]\n"
-                out += f"  ■ {a.title}\n"
-                if a.subtitle:
-                    out += f"    [{a.subtitle}]\n"
-                if a.author:
-                    out += f"    {a.author}\n"
-                if a.image_desc:
-                    out += f"    [图] {a.image_desc}\n"
+                if art.yinti:
+                    out += f"  [{art.yinti}]\n"
+                out += f"  ■ {art.title}\n"
+                if art.subtitle:
+                    out += f"    [{art.subtitle}]\n"
+                if art.author:
+                    out += f"    {art.author}\n"
+                if art.image_desc:
+                    out += f"    [图] {art.image_desc}\n"
                 out += "\n"
-                for p in a.paragraphs:
+                for p in art.paragraphs:
                     p = p.strip()
                     if p:
                         out += f"    {p}\n\n"
@@ -119,15 +118,15 @@ class Formatter:
 
 
 # ---------------------------------------------------------------------- #
-# 辅助函数
+# Helpers
 # ---------------------------------------------------------------------- #
 def count_full(editions: list[Edition]) -> int:
-    """统计已抓取为完整文章的篇数。"""
+    """Count entries already fetched into full articles."""
     return sum(1 for ed in editions for item in ed.articles if is_full(item))
 
 
 def edition_label(ed: Edition) -> str:
-    """版面标题：第NN版（· 版名）。"""
+    """Edition heading: 第NN版, suffixed with the page name when present."""
     if not ed.name:
         return f"第{ed.num:02d}版"
     return f"第{ed.num:02d}版 · {ed.name}"
@@ -136,7 +135,10 @@ def edition_label(ed: Edition) -> str:
 def anchors(
     editions: list[Edition],
 ) -> tuple[list[str], list[list[str]]]:
-    """生成版面与文章的 Markdown 锚点（重复标题追加 -1、-2…）。"""
+    """Return (edition anchors, per-edition article anchors).
+
+    Duplicate headings get a ``-1``, ``-2``, ... suffix to keep anchors unique.
+    """
     ed_out: list[str] = []
     art_out: list[list[str]] = []
     seen_ed: dict[str, int] = {}
@@ -161,7 +163,10 @@ def anchors(
 
 
 def md_anchor(text: str) -> str:
-    """转 Markdown 锚点：小写、去特殊字符、空白转 -。"""
+    """Convert text to a Markdown anchor: lowercase, punctuation dropped, spaces -> -.
+
+    Falls back to "section" when nothing survives.
+    """
     lower = text.lower()
     s = RE_ANCHOR.sub("", lower)
     s = RE_SPACE.sub("-", s).strip("-")
@@ -169,7 +174,7 @@ def md_anchor(text: str) -> str:
 
 
 def md_article(a: Article) -> list[str]:
-    """单篇文章的 Markdown 行列表。"""
+    """Render one article as a list of Markdown lines (each terminated by a blank line)."""
     lines: list[str] = []
     if a.yinti:
         lines.append(f"*{a.yinti}*\n\n")

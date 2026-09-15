@@ -1,10 +1,10 @@
-"""大众日报爬虫。
+"""Dazhong Daily crawler.
 
-网址: https://paper.dzwww.com/dzrb
+Base URL: https://paper.dzwww.com/dzrb
 
-索引页（PageArticleIndexWZ.htm）一页包含所有版面和文章链接。
+A single index page (PageArticleIndexWZ.htm) carries every edition and article link.
 
-逐条对齐 Rust 版 src-tauri/src/crawler/dzrb.rs。
+Mirrors Rust src-tauri/src/crawler/dzrb.rs.
 """
 
 from __future__ import annotations
@@ -14,12 +14,10 @@ import re
 from datetime import date
 from typing import Optional
 
-from bs4 import BeautifulSoup
-
-from ..base import SiteCrawler
+from ..base import EmptyIndexError, SiteCrawler
 from ..http import HttpSession
 from ..models import Article, ArticleRef, Edition
-from ..util import join_url
+from ..util import join_url, make_soup
 
 BASE_URL = "https://paper.dzwww.com/dzrb"
 
@@ -41,7 +39,7 @@ def _get_editions(http: HttpSession, d: date) -> list[Edition]:
     if html is None:
         return []
 
-    doc = BeautifulSoup(html, "html.parser")
+    doc = make_soup(html)
     editions: list[Edition] = []
     for cell in doc.select("td.font_bai"):
         text = cell.get_text().strip()
@@ -53,7 +51,7 @@ def _get_editions(http: HttpSession, d: date) -> list[Edition]:
             continue
         name = m.group(2).strip()
 
-        # 版面文章位于 id=partTitleDiv{版号} 的 div 内
+        # An edition's articles live in the div with id=partTitleDiv{page_num}.
         div = doc.find(id=f"partTitleDiv{page_num}")
         articles: list[ArticleRef] = []
         if div is not None:
@@ -63,6 +61,8 @@ def _get_editions(http: HttpSession, d: date) -> list[Edition]:
                 if href and title and href.endswith(".htm"):
                     articles.append(ArticleRef(title=title, url=join_url(url, href)))
         editions.append(Edition(num=page_num, name=name, articles=articles))
+    if not editions:
+        raise EmptyIndexError("索引页未解析出任何版面（td.font_bai 无匹配）")
     return editions
 
 
@@ -70,7 +70,7 @@ def _fetch_article(http: HttpSession, r: ArticleRef, d: date) -> Optional[Articl
     html = http.get_text(r.url, silent_404=False)
     if html is None:
         return None
-    doc = BeautifulSoup(html, "html.parser")
+    doc = make_soup(html)
 
     yinti_el = doc.select_one("h2.yinti span")
     yinti = yinti_el.get_text().strip() if yinti_el is not None else ""
@@ -87,7 +87,7 @@ def _fetch_article(http: HttpSession, r: ArticleRef, d: date) -> Optional[Articl
     img_el = doc.select_one(".imagedesc")
     image_desc = img_el.get_text().strip() if img_el is not None else ""
 
-    # 正文：按 <br> 分割 #contenttext 的 HTML，去掉其余标签并反转义实体
+    # Body: split #contenttext's HTML on <br>, then strip tags and unescape entities.
     paragraphs: list[str] = []
     content = doc.select_one("#contenttext")
     if content is not None:
@@ -97,7 +97,7 @@ def _fetch_article(http: HttpSession, r: ArticleRef, d: date) -> Optional[Articl
             if t:
                 paragraphs.append(t)
 
-    # 回退：页面内所有 <p> 的非空文本
+    # Fallback: the non-empty text of every <p> on the page.
     if not paragraphs:
         paragraphs = [p.get_text().strip() for p in doc.find_all("p")]
         paragraphs = [s for s in paragraphs if s]
@@ -114,7 +114,7 @@ def _fetch_article(http: HttpSession, r: ArticleRef, d: date) -> Optional[Articl
 
 
 class DazhongCrawler(SiteCrawler):
-    """大众日报站点爬虫。"""
+    """Dazhong Daily crawler."""
 
     crawler_id = "dzrb"
     name = "大众日报"
@@ -127,5 +127,5 @@ class DazhongCrawler(SiteCrawler):
     def fetch_article(
         self, http: HttpSession, aref: ArticleRef, d: date
     ) -> Optional[Article]:
-        # Rust 版忽略日期参数（仅新老系统切换的站点需要）
+        # The date argument is ignored (only sites with a system switch need it).
         return _fetch_article(http, aref, d)

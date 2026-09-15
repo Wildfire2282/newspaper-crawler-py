@@ -1,7 +1,6 @@
-"""报刊下载器 Python 版核心包。
+"""Core package of the newspaper downloader (pure-Python rewrite).
 
-重构自 https://github.com/Wildfire2282/newspaper-crawler (Tauri/Rust)，
-提供多站点电子报批量下载的纯 Python 实现。
+Port of https://github.com/Wildfire2282/newspaper-crawler (Tauri/Rust).
 """
 
 from importlib.metadata import PackageNotFoundError, version
@@ -17,9 +16,9 @@ from .models import (
     OutputFormat,
 )
 
-try:  # 版本号单一来源：pyproject.toml
+try:  # Single source of truth for the version: pyproject.toml.
     __version__ = version("newspaper-crawler")
-except PackageNotFoundError:  # 未安装（直接运行源码）时回退
+except PackageNotFoundError:  # Running from source without an installed dist.
     __version__ = "3.2.0"
 
 __all__ = [

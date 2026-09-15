@@ -1,6 +1,7 @@
-"""交互式命令行界面（rich 富终端菜单）。
+"""Interactive terminal UI (rich menus).
 
-原 crawler.py 的交互逻辑整体平移至此，行为保持一致。
+The interactive flow was moved here verbatim from the original ``crawler.py``;
+behavior is unchanged.
 """
 
 from __future__ import annotations
@@ -19,17 +20,17 @@ from . import __version__ as VERSION
 from .models import OutputFormat
 from .registry import all_sites, lookup
 from .scheduler import run_multi
-from .util import configure_logging, make_crawl_options, parse_date, project_root
+from .util import configure_logging, make_crawl_options, parse_date
 
 console = Console()
 
 
 class _InputClosed(Exception):
-    """stdin 关闭（Ctrl+D / 管道结束）时抛出，用于优雅退出。"""
+    """Raised when stdin is closed (Ctrl+D / end of pipe); callers exit gracefully."""
 
 
 def ask(prompt: str, **kwargs):
-    """安全的 Prompt.ask：EOF 时抛 _InputClosed。"""
+    """Prompt.ask wrapper: raises _InputClosed instead of EOFError."""
     try:
         return Prompt.ask(prompt, **kwargs)
     except EOFError:
@@ -37,7 +38,7 @@ def ask(prompt: str, **kwargs):
 
 
 def confirm(prompt: str, **kwargs):
-    """安全的 Confirm.ask：EOF 时抛 _InputClosed。"""
+    """Confirm.ask wrapper: raises _InputClosed instead of EOFError."""
     try:
         return Confirm.ask(prompt, **kwargs)
     except EOFError:
@@ -45,7 +46,11 @@ def confirm(prompt: str, **kwargs):
 
 
 def _parse_site_selection(answer: str, count: int) -> list:
-    """解析站点多选输入：'all' 全选；逗号/空格分隔编号。"""
+    """Parse a multi-select answer into 1-based indexes.
+
+    Accepts "all" (every index) or comma/space-separated numbers; out-of-range and
+    non-numeric tokens are reported and dropped. Returns a sorted, de-duplicated list.
+    """
     answer = answer.strip().lower()
     if answer == "all":
         return list(range(1, count + 1))
@@ -59,7 +64,7 @@ def _parse_site_selection(answer: str, count: int) -> list:
     return sorted(set(idxs))
 
 
-# ---------------------------------------------------------------- 交互函数
+# ---------------------------------------------------------------- menus
 
 
 def print_banner() -> None:
@@ -76,13 +81,13 @@ def print_banner() -> None:
 
 
 def default_state() -> dict:
-    """初始配置：最近 7 天、全站点、默认输出 ./downloads。"""
+    """Initial state: last 7 days, all sites, ``./downloads``."""
     today = date.today()
     return {
-        "site_keys": [],  # 空 = 全选（进入选择菜单时填充）
+        "site_keys": [],  # empty == all sites; filled in by the site menu
         "start_date": today - timedelta(days=6),
         "end_date": today,
-        "output_dir": project_root() / "downloads",
+        "output_dir": Path.cwd() / "downloads",
         "output_format": "md",  # md | txt
         "max_workers": 5,
         "fast_mode": False,
@@ -91,7 +96,7 @@ def default_state() -> dict:
 
 
 def choose_sites(state: dict) -> None:
-    """菜单 1：选择报纸（多选，默认全选）。"""
+    """Menu 1: pick newspapers (multi-select, defaults to all)."""
     sites = all_sites()
     if not sites:
         console.print("[red]未找到可用站点（站点模块加载失败）[/red]")
@@ -130,7 +135,7 @@ def choose_sites(state: dict) -> None:
 
 
 def choose_dates(state: dict) -> None:
-    """菜单 2：设置日期范围。"""
+    """Menu 2: set the date range. Keeps the previous range on invalid input."""
     console.print(
         Panel(
             f"当前范围：[bold]{state['start_date']} ~ {state['end_date']}[/bold]",
@@ -167,7 +172,7 @@ def choose_dates(state: dict) -> None:
 
 
 def choose_output_dir(state: dict) -> None:
-    """菜单 3：设置输出目录。"""
+    """Menu 3: set the output directory (``~`` expanded, relative to the CWD)."""
     answer = ask(
         "输出目录（支持 ~；留空保持当前）",
         default=str(state["output_dir"]),
@@ -175,20 +180,20 @@ def choose_output_dir(state: dict) -> None:
     if answer:
         path = Path(os.path.expanduser(answer))
         if not path.is_absolute():
-            path = project_root() / path
+            path = Path.cwd() / path
         state["output_dir"] = path
     console.print(f"[green]输出目录：{state['output_dir']}[/green]")
 
 
 def choose_format(state: dict) -> None:
-    """菜单 4：输出格式。"""
+    """Menu 4: set the output format."""
     fmt = ask("输出格式", choices=["md", "txt"], default=state["output_format"])
     state["output_format"] = fmt
     console.print(f"[green]输出格式：{fmt}[/green]")
 
 
 def choose_advanced(state: dict) -> None:
-    """菜单 5：高级选项（并发/快速模式/断点续传）。"""
+    """Menu 5: article concurrency, fast mode, skip-existing."""
     console.print(Panel("高级选项", border_style="cyan"))
 
     workers = ask("并发线程数", default=str(state["max_workers"]))
@@ -209,47 +214,41 @@ def choose_advanced(state: dict) -> None:
     )
 
 
-# ---------------------------------------------------------------- 事件处理
+# ---------------------------------------------------------------- event rendering
+
+
+_KIND_COLOR = {
+    "site_start": "cyan",
+    "day_start": "cyan",
+    "day_skip": "yellow",
+    "day_empty": "yellow",
+    "day_error": "red",
+    "day_done": "green",
+    "site_done": "cyan",
+    "finished": "bold green",
+}
 
 
 def handle_event(ev) -> None:
-    """处理调度器进度事件，输出一行彩色日志。"""
-    kind = ev.kind
-    site = ev.site
-    if kind == "site_start":
-        console.print(f"[cyan][{site}] 任务开始[/cyan]")
-    elif kind == "day_start":
-        console.print(f"[cyan][{site}] {ev.date}({ev.weekday}) 开始[/cyan]")
-    elif kind == "day_skip":
-        console.print(
-            f"[yellow][{site}] {ev.date}({ev.weekday}) 跳过（文件已存在）[/yellow]"
-        )
-    elif kind == "day_empty":
-        console.print(f"[yellow][{site}] {ev.date}({ev.weekday}) 无报纸[/yellow]")
-    elif kind == "day_error":
-        console.print(f"[red][{site}] {ev.date} 错误：{ev.message}[/red]")
-    elif kind == "day_done":
-        extra = f" · {ev.errors} 错误" if ev.errors > 0 else ""
-        console.print(
-            f"[green][{site}] {ev.date}({ev.weekday}) 完成 {ev.editions} 版 "
-            f"{ev.articles} 篇{extra}[/green]"
-        )
-    elif kind == "site_done":
-        console.print(f"[cyan][{site}] 任务结束[/cyan]")
-    elif kind == "log":
+    """Colour-code the scheduler message by event kind.
+
+    Renders ``ev.message`` verbatim: the message is already complete, so prefixing it
+    with the site name here would duplicate it.
+    """
+    if not ev.message:
+        return
+    if ev.kind == "log":
         color = {"warn": "yellow", "error": "red"}.get(ev.level, "cyan")
-        console.print(f"[{color}][{site}] {ev.message}[/{color}]")
-    elif kind == "finished":
-        console.print(
-            f"[bold green]全部完成 · 耗时 {ev.elapsed_secs:.1f}s · {ev.stats}[/bold green]"
-        )
+    else:
+        color = _KIND_COLOR.get(ev.kind, "cyan")
+    console.print(f"[{color}]{ev.message}[/{color}]")
 
 
-# ---------------------------------------------------------------- 下载流程
+# ---------------------------------------------------------------- download flow
 
 
 def start_download(state: dict) -> None:
-    """菜单 6：按当前配置开始批量下载。"""
+    """Menu 6: run the crawl with the current state."""
     site_keys = state["site_keys"] or [s.crawler_id for s in all_sites()]
     if not site_keys:
         console.print("[red]请先选择报纸（菜单 1）[/red]")
@@ -261,7 +260,7 @@ def start_download(state: dict) -> None:
         site_names.append(site.name if site else key)
 
     fmt = OutputFormat.TXT if state["output_format"] == "txt" else OutputFormat.MD
-    opts, workers = make_crawl_options(
+    opts = make_crawl_options(
         start=state["start_date"],
         end=state["end_date"],
         output_dir=state["output_dir"],
@@ -275,7 +274,7 @@ def start_download(state: dict) -> None:
         f"报纸：{'、'.join(site_names)}\n"
         f"日期：{state['start_date']} ~ {state['end_date']}\n"
         f"输出目录：{state['output_dir']}\n"
-        f"格式：{state['output_format']} · 并发：{workers} · "
+        f"格式：{state['output_format']} · 并发：{opts.max_workers} · "
         f"快速模式：{'开' if state['fast_mode'] else '关'} · "
         f"断点续传：{'开' if state['skip_existing'] else '关'}"
     )
@@ -287,8 +286,8 @@ def start_download(state: dict) -> None:
     try:
         run_multi(site_keys, opts, on_event=handle_event)
     except KeyboardInterrupt:
-        # run_multi 为同步调用，无法在回调中取消线程池；
-        # 已按日原子写入的文件全部保留，剩余日期可下次续传。
+        # run_multi is synchronous, so the pool cannot be cancelled from a callback.
+        # Every day already written stays on disk; the rest resumes via skip-existing.
         console.print(
             "\n[yellow]已中断下载。已抓取并写入的文件均已保存，"
             "未完成的日期可在下次运行（开启断点续传）时继续。[/yellow]"
@@ -297,7 +296,7 @@ def start_download(state: dict) -> None:
     console.print(f"[green]文件保存在：{state['output_dir']}[/green]")
 
 
-# ---------------------------------------------------------------- 主流程
+# ---------------------------------------------------------------- main flow
 
 
 def main_loop(state: dict) -> None:
@@ -342,7 +341,7 @@ def main_loop(state: dict) -> None:
 
 
 def run() -> int:
-    """进入交互式菜单，返回进程退出码。"""
+    """Enter the interactive menu. Always returns 0 (Ctrl+C and EOF are handled)."""
     configure_logging()
     try:
         print_banner()

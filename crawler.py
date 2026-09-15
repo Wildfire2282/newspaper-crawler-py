@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""报刊下载器入口。
+"""Newspaper downloader entry script.
 
-用法：
-    python crawler.py              无参数且处于终端时进入交互式菜单
-    python crawler.py --help       查看全部子命令、参数、示例与退出码
-    python crawler.py sites        列出可用站点
-    python crawler.py plan ...     预演将抓取/跳过的日期（不联网、不写盘）
-    python crawler.py crawl ...    执行下载
+Usage (the authoritative reference is ``--help``, not this docstring):
+    python crawler.py              interactive menu when run on a TTY with no args
+    python crawler.py --help       all subcommands, options, examples and exit codes
+    python crawler.py sites        list available sites
+    python crawler.py plan ...     dry-run: days that would be fetched or skipped
+    python crawler.py crawl ...    fetch
 
-完整说明由 `--help` 自描述；实现在 newspaper_crawler.cli。
+Implementation lives in ``newspaper_crawler.cli``.
 """
 
 import sys

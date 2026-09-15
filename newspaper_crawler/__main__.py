@@ -1,4 +1,4 @@
-"""``python -m newspaper_crawler`` 入口。"""
+"""Entry point for ``python -m newspaper_crawler``."""
 
 from .cli import main
 

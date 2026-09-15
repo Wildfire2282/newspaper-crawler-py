@@ -1,17 +1,36 @@
-"""HTTP 客户端测试：重试配置与 get() 的返回语义（不联网）。"""
+"""http tests: retry config, connection pool, response cap and get() semantics (offline)."""
 
+import codecs
 import logging
 
 import requests
 
-from newspaper_crawler.http import RETRY_STATUSES, HttpSession
+from newspaper_crawler.http import (
+    DEFAULT_MAX_BYTES,
+    DEFAULT_POOL_CONNECTIONS,
+    RETRY_STATUSES,
+    HttpSession,
+    _decode,
+)
 from newspaper_crawler.util import configure_logging
 
 
 class _Resp:
-    def __init__(self, status_code: int, content: bytes = b""):
+    def __init__(
+        self,
+        status_code: int,
+        content: bytes = b"",
+        headers: dict | None = None,
+        apparent_encoding: str | None = None,
+    ):
         self.status_code = status_code
         self.content = content
+        self.headers = headers or {}
+        self.apparent_encoding = apparent_encoding
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
 
 def test_adapter_uses_configured_retries():
@@ -84,3 +103,57 @@ def test_configure_logging_routes_urllib3():
     assert logging.getLogger("urllib3").level == logging.DEBUG
     configure_logging(verbose=False)
     assert logging.getLogger("urllib3").level == logging.WARNING
+
+
+def test_adapter_pool_size_matches_concurrency_budget():
+    http = HttpSession(pool_maxsize=20)
+    adapter = http.session.get_adapter("http://example.com")
+    assert adapter._pool_maxsize == 20  # argument honored; avoids pool discard churn
+    assert adapter._pool_connections == DEFAULT_POOL_CONNECTIONS
+    http.close()
+
+
+# ---------------------------------------------------------------- response size cap
+
+
+def test_get_skips_oversized_response_by_content_length(monkeypatch):
+    http = HttpSession()
+    resp = _Resp(200, headers={"Content-Length": str(DEFAULT_MAX_BYTES + 1)})
+    monkeypatch.setattr(http.session, "get", lambda *a, **k: resp)
+
+    assert http.get("http://example.com") is None
+    assert resp.closed is True  # connection released without reading the body
+
+
+def test_get_allows_response_at_the_limit(monkeypatch):
+    http = HttpSession()
+    resp = _Resp(200, headers={"Content-Length": str(DEFAULT_MAX_BYTES)})
+    monkeypatch.setattr(http.session, "get", lambda *a, **k: resp)
+
+    assert http.get("http://example.com") is resp
+
+
+def test_get_ignores_unparseable_content_length(monkeypatch):
+    http = HttpSession()
+    resp = _Resp(200, headers={"Content-Length": "chunked"})
+    monkeypatch.setattr(http.session, "get", lambda *a, **k: resp)
+
+    assert http.get("http://example.com") is resp
+
+
+# ---------------------------------------------------------------- decode fallback chain
+
+
+def test_decode_strips_utf8_bom():
+    assert _decode(_Resp(200, codecs.BOM_UTF8 + "中文".encode())) == "中文"
+
+
+def test_decode_handles_utf16_bom():
+    assert _decode(_Resp(200, "中文".encode("utf-16"))) == "中文"
+
+
+def test_decode_falls_back_to_apparent_encoding():
+    # b"\xff\xff" is neither valid utf-8 nor valid GBK (0xFF is not a lead byte),
+    # so decoding must fall through to apparent_encoding.
+    resp = _Resp(200, b"\xff\xff", apparent_encoding="latin-1")
+    assert _decode(resp) == "ÿÿ"

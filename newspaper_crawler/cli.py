@@ -1,9 +1,10 @@
-"""非交互命令行接口（面向脚本与 agent）。
+"""Non-interactive CLI (script- and agent-facing).
 
-约定：
-- 结果写 stdout，进度写 stderr；
-- 退出码 0 成功 / 1 运行期错误 / 2 用法错误 / 130 中断；
-- ``--json`` 时 stdout 为单个 JSON 对象，rich 降级为纯文本。
+Contract:
+- results go to stdout, progress and logs to stderr;
+- exit codes: 0 success / 1 runtime error / 2 usage error / 130 interrupted;
+- with ``--json``, stdout is exactly one JSON object and rich output degrades to
+  plain text.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from .base import SiteCrawler
 from .models import OutputFormat
 from .registry import all_sites, lookup
 from .scheduler import ProgressEvent, run_multi
-from .util import configure_logging, make_crawl_options, parse_date, project_root
+from .util import configure_logging, make_crawl_options, parse_date
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -31,11 +32,11 @@ EXIT_USAGE = 2
 EXIT_INTERRUPTED = 130
 
 
-# ---------------------------------------------------------------- 参数解析
+# ---------------------------------------------------------------- argument parsing
 
 
 def _parse_date_arg(text: str) -> date:
-    """argparse 用：把 YYYY-MM-DD / YYYYMMDD 解析为 date，失败即用法错误。"""
+    """argparse type: parse YYYY-MM-DD / YYYYMMDD; a bad value is a usage error."""
     try:
         return parse_date(text)
     except ValueError as exc:
@@ -62,7 +63,7 @@ def _add_download_args(parser: argparse.ArgumentParser) -> None:
         "-o",
         "--output-dir",
         default=None,
-        help="输出目录（默认 <项目目录>/downloads；相对路径相对当前工作目录）",
+        help="输出目录（默认 ./downloads；相对路径相对当前工作目录）",
     )
     parser.add_argument(
         "-f",
@@ -75,7 +76,7 @@ def _add_download_args(parser: argparse.ArgumentParser) -> None:
 
 
 class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
-    """保留 epilog 的原始换行与缩进（示例、字段列表按行展示）。"""
+    """Preserve epilog line breaks and indentation (examples, field lists)."""
 
 
 def _add_help_flag(parser: argparse.ArgumentParser) -> None:
@@ -83,12 +84,16 @@ def _add_help_flag(parser: argparse.ArgumentParser) -> None:
 
 
 def _localize(parser: argparse.ArgumentParser) -> None:
-    """把 argparse 的 options 分组标题改为中文（该属性长期稳定，无公开 API）。"""
+    """Rename argparse's options group heading.
+
+    Note: touches the private ``_optionals`` attribute; no public API exists for it,
+    but the attribute has been stable across CPython releases.
+    """
     parser._optionals.title = "选项"
 
 
 def _subparser(sub, name: str, summary: str, epilog: str) -> argparse.ArgumentParser:
-    """创建统一的子命令解析器：中文帮助入口 + 带示例的 epilog。"""
+    """Build a subcommand parser with the shared help wiring (Chinese help + epilog)."""
     parser = sub.add_parser(
         name,
         help=summary,
@@ -144,7 +149,12 @@ _CRAWL_EPILOG = """\
   crawler crawl                                    # 全部站点，最近 7 天
   crawler crawl --sites rmrb --start 20260901 --end 20260903
   crawler crawl --sites all -o ~/paper -f txt --workers 8 --fast
+  crawler crawl --sites all --site-workers 1       # 站点改为串行（调试用）
   crawler crawl --sites nope --json                # 站点无法识别 → 退出码 1
+
+站点调度:
+  多个站点默认并行（不同站点是不同主机，互不影响对方请求频率）；
+  --site-workers 控制并行站点数，--workers 控制单站点内部的文章并发数。
 
 --json 输出字段:
   ok              是否全部成功（无错误且无未识别站点）
@@ -156,7 +166,8 @@ _CRAWL_EPILOG = """\
                   total_editions / total_articles / total_errors
   files           本次写入的文件路径
   skipped         因已存在而跳过的文件路径
-  errors          [{"site": ..., "date": ..., "message": ...}]"""
+  errors          [{"site": ..., "date": ..., "message": ...}]
+  warnings        同上格式；含无法识别的站点、索引页结构疑似变化等（不影响 ok）"""
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -190,7 +201,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_crawl = _subparser(sub, "crawl", "执行下载", _CRAWL_EPILOG)
     _add_download_args(p_crawl)
-    p_crawl.add_argument("--workers", type=int, default=5, help="并发线程数（默认 5）")
+    p_crawl.add_argument(
+        "--workers", type=int, default=5, help="单站点并发线程数（默认 5）"
+    )
+    p_crawl.add_argument(
+        "--site-workers",
+        dest="site_workers",
+        type=int,
+        default=4,
+        help="并发站点数（不同站点互不影响请求频率，默认 4）",
+    )
     p_crawl.add_argument(
         "--fast", action="store_true", help="快速模式（降低延迟、加大并发）"
     )
@@ -222,16 +242,19 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-# ---------------------------------------------------------------- 通用工具
+# ---------------------------------------------------------------- shared helpers
 
 
 def _split_tokens(text: str) -> list[str]:
-    """按逗号/中文逗号/空格切分（忽略空项）。"""
+    """Split on comma, full-width comma or space; empty items are dropped."""
     return [p for p in text.replace("，", ",").replace(" ", ",").split(",") if p]
 
 
 def _resolve_sites(spec: str) -> tuple[list[SiteCrawler], list[str]]:
-    """把 --sites 规格解析为 (站点实例列表, 无法识别的原始输入)。"""
+    """Resolve ``--sites`` into (crawler instances, unrecognized raw tokens).
+
+    Order of the input is preserved and duplicates are collapsed by crawler id.
+    """
     if spec.strip().lower() in ("", "all"):
         return all_sites(), []
     sites: list[SiteCrawler] = []
@@ -248,9 +271,13 @@ def _resolve_sites(spec: str) -> tuple[list[SiteCrawler], list[str]]:
 
 
 def _resolve_output_dir(text: str | None) -> Path:
-    """默认输出目录为项目下 downloads；显式相对路径按当前工作目录解析。"""
+    """Resolve the output directory; relative paths are relative to the CWD.
+
+    ``None`` defaults to ``./downloads`` in the CWD rather than the package location,
+    so the default stays correct when installed as a console script.
+    """
     if text is None:
-        return project_root() / "downloads"
+        return Path.cwd() / "downloads"
     path = Path(text).expanduser()
     return path if path.is_absolute() else Path.cwd() / path
 
@@ -264,13 +291,18 @@ def _emit_json(obj: dict) -> None:
 
 
 class _Progress:
-    """调度事件处理器：输出进度行，并收集 JSON 结果所需的结构化数据。"""
+    """Scheduler event handler: prints progress lines and collects JSON payload data.
+
+    Invariant: warnings and errors are kept apart. A warning (e.g. unrecognized site,
+    suspected site redesign) does not affect ``ok``; only a day_error does.
+    """
 
     def __init__(self, console: Console | None):
         self.console = console
         self.files: list[str] = []
         self.skipped: list[str] = []
         self.errors: list[dict] = []
+        self.warnings: list[dict] = []
 
     def __call__(self, ev: ProgressEvent) -> None:
         if ev.path is not None:
@@ -279,20 +311,24 @@ class _Progress:
             elif ev.kind == "day_skip":
                 self.skipped.append(str(ev.path))
         if ev.kind == "day_error":
-            self.errors.append(
-                {
-                    "site": ev.site,
-                    "date": ev.date.isoformat() if ev.date else None,
-                    "message": ev.message,
-                }
-            )
+            self.errors.append(self._entry(ev))
         elif ev.kind == "log" and ev.level == "error":
             self.errors.append({"site": ev.site, "date": None, "message": ev.message})
+        elif ev.kind == "log" and ev.level == "warn":
+            self.warnings.append(self._entry(ev))
         if self.console is not None:
             self.console.print(ev.message)
 
+    @staticmethod
+    def _entry(ev: ProgressEvent) -> dict:
+        return {
+            "site": ev.site,
+            "date": ev.date.isoformat() if ev.date else None,
+            "message": ev.message,
+        }
 
-# ---------------------------------------------------------------- 子命令
+
+# ---------------------------------------------------------------- subcommands
 
 
 def cmd_sites(args: argparse.Namespace) -> int:
@@ -387,7 +423,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     keys = [s.crawler_id for s in sites]
     output_dir = _resolve_output_dir(args.output_dir)
     fmt = _output_format(args.fmt)
-    opts, workers = make_crawl_options(
+    opts = make_crawl_options(
         start=args.start,
         end=args.end,
         output_dir=output_dir,
@@ -396,6 +432,8 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         fast=args.fast,
         skip_existing=args.skip_existing,
     )
+    workers = opts.max_workers
+    site_workers = max(1, args.site_workers)
 
     console = (
         None
@@ -408,7 +446,8 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         names = "、".join(s.name for s in sites) or "（无）"
         console.print(
             f"站点：{names} · 日期：{args.start} ~ {args.end} · "
-            f"输出：{output_dir} · 格式：{fmt.ext()} · 并发：{workers} · "
+            f"输出：{output_dir} · 格式：{fmt.ext()} · "
+            f"并发：{site_workers} 站点 × {workers} 线程 · "
             f"快速模式：{'开' if args.fast else '关'} · "
             f"断点续传：{'开' if args.skip_existing else '关'}"
         )
@@ -416,7 +455,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         print(f"警告：无法识别的站点：{'、'.join(unknown)}", file=sys.stderr)
 
     started = time.monotonic()
-    stats = run_multi(keys, opts, on_event=progress)
+    stats = run_multi(keys, opts, on_event=progress, max_site_workers=site_workers)
     elapsed = time.monotonic() - started
 
     ok = not unknown and not progress.errors
@@ -433,6 +472,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         "files": progress.files,
         "skipped": progress.skipped,
         "errors": progress.errors,
+        "warnings": progress.warnings,
     }
     if args.json:
         _emit_json(result)
@@ -451,7 +491,7 @@ def cmd_interactive(args: argparse.Namespace) -> int:
     return tui.run()
 
 
-# ---------------------------------------------------------------- 入口
+# ---------------------------------------------------------------- entry points
 
 
 def _run_subcommand(argv: list[str]) -> int:
@@ -471,7 +511,7 @@ def _run_subcommand(argv: list[str]) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """统一入口：无参数且处于终端时进入交互菜单，否则走子命令。"""
+    """Single entry point: TUI when invoked with no args on a TTY, else subcommands."""
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv and sys.stdin.isatty() and sys.stdout.isatty():
         from . import tui

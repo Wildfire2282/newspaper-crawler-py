@@ -1,41 +1,54 @@
-"""光明日报爬虫。
+"""Guangming Daily crawler.
 
-网址: https://epaper.gmw.cn/gmrb
+Base URL: https://epaper.gmw.cn/gmrb
 
-2026 年 1 月 1 日起新版系统（/gmrb/html/layout/YYYYMM/DD/node_NN.html）
-2025 年及以前旧版系统（/gmrb/html/YYYY-MM/DD/nbs.D110000gmrb_NN.htm）
+Two upstream systems, selected by date:
+- new (d >= 2026-01-01): /gmrb/html/layout/YYYYMM/DD/node_NN.html
+- old (d <= 2025-12-31): /gmrb/html/YYYY-MM/DD/nbs.D110000gmrb_NN.htm
 
-逐条对齐 Rust 版 src-tauri/src/crawler/gmrb.rs。
+Mirrors Rust src-tauri/src/crawler/gmrb.rs.
 """
 
 from __future__ import annotations
 
+import html as html_module
 import re
-from concurrent.futures import ThreadPoolExecutor
 from datetime import date
 from typing import Optional
 
 from bs4 import BeautifulSoup
 
-from ..base import SiteCrawler
+from ..base import EmptyIndexError, SiteCrawler, fetch_texts
 from ..http import HttpSession
 from ..models import Article, ArticleRef, Edition
-from ..util import clean_title, join_url, meta_content
+from ..util import (
+    clean_title,
+    join_url,
+    make_soup,
+    meta_content,
+    page_numbers_from_links,
+)
 
 BASE_URL = "https://epaper.gmw.cn"
 SWITCH_DATE = date(2026, 1, 1)
 
-# 旧版 <title> 中的版名，如 "第01版:要闻_光明日报"
+# Page name inside the old system's <title>, e.g. "第01版:要闻_光明日报".
 RE_OLD_EDITION_NAME = re.compile(r"第\d+版[:：](.+?)(?:_|$)")
-# 旧版文章链接特征
+# Old-system article link marker.
 NW_HREF = "nw.D110000gmrb"
+# Layout page links, new and old; used to discover the real edition set.
+RE_NEW_PAGE_HREF = re.compile(r"node_(\d+)\.html")
+RE_OLD_PAGE_HREF = re.compile(r"nbs\.D110000gmrb_(\d+)\.htm")
+# Title cleanup inside an anchor: <br> becomes a space, then remaining tags are dropped.
+RE_BR = re.compile(r"<br\s*/?>", re.IGNORECASE)
+RE_TAG = re.compile(r"<[^>]+>")
 
-# 版面页范围 1..20（Rust 版遍历 2..21 作为 2..=20）
+# Page-count ceiling; consulted only when the navigation links reveal no page numbers.
 MAX_PAGES = 20
 
 
 def _detect(d: date) -> str:
-    """2026-01-01 起为新版系统。"""
+    """Return "new" for d >= 2026-01-01, else "old"."""
     return "new" if d >= SWITCH_DATE else "old"
 
 
@@ -53,18 +66,10 @@ def _old_layout_url(d: date, page: int) -> str:
     )
 
 
-def _fetch_texts(
-    http: HttpSession, urls: list[str], silent_404: bool
-) -> list[Optional[str]]:
-    """并发抓取一批页面，按 urls 顺序返回（失败项为 None）。"""
-    if not urls:
-        return []
-    with ThreadPoolExecutor(max_workers=min(8, len(urls))) as pool:
-        return list(pool.map(lambda u: http.get_text(u, silent_404=silent_404), urls))
-
-
 def _new_page_refs(soup: BeautifulSoup, page_url: str) -> list[ArticleRef]:
-    """新版版面页：.m-title-list .m-list-wrap li 内第一个 <a> 即文章。"""
+    """New-system layout page: the first <a> under each
+    .m-title-list .m-list-wrap li is one article.
+    """
     refs: list[ArticleRef] = []
     for li in soup.select(".m-title-list .m-list-wrap li"):
         a = li.find("a")
@@ -86,25 +91,34 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
     if html is None:
         return []
 
-    soup = BeautifulSoup(html, "html.parser")
+    soup = make_soup(html)
     name_el = soup.select_one(".m-type")
     if name_el is None:
-        return []
+        raise EmptyIndexError("新版版面页缺少 .m-type 版面名")
     name = name_el.get_text().strip()
 
     refs = _new_page_refs(soup, url1)
     if not refs:
-        return []
+        raise EmptyIndexError("新版第 1 版页未解析出任何文章")
     editions = [Edition(num=1, name=name, articles=refs)]
 
-    # 其余版面页与 node_01 同目录：<目录>/node_NN.html
+    # Remaining layout pages share node_01's directory: <dir>/node_NN.html.
+    # Page numbers are discovered from the page-1 links when possible; otherwise fall
+    # back to probing 2..MAX_PAGES.
     url_base = url1.rsplit("/", 1)[0]
-    page_urls = [f"{url_base}/node_{p:02d}.html" for p in range(2, MAX_PAGES + 1)]
-    bodies = _fetch_texts(http, page_urls, silent_404=True)
-    for p, page_url, body in zip(range(2, MAX_PAGES + 1), page_urls, bodies):
+    pages = [
+        p for p in page_numbers_from_links(soup, RE_NEW_PAGE_HREF, MAX_PAGES) if p >= 2
+    ]
+    if not pages:
+        pages = list(range(2, MAX_PAGES + 1))
+
+    cache: dict[str, str] = {url1: html}
+    page_urls = [f"{url_base}/node_{p:02d}.html" for p in pages]
+    bodies = fetch_texts(http, page_urls, silent_404=True, cache=cache)
+    for p, page_url, body in zip(pages, page_urls, bodies):
         if body is None:
             continue
-        doc = BeautifulSoup(body, "html.parser")
+        doc = make_soup(body)
         name_el = doc.select_one(".m-type")
         page_name = name_el.get_text().strip() if name_el is not None else ""
         arts = _new_page_refs(doc, page_url)
@@ -118,10 +132,11 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
 def _old_page_items(
     soup: BeautifulSoup, page_url: str, page_num: int
 ) -> tuple[str, list[ArticleRef]]:
-    """旧版版面页：返回 (版名, 文章引用列表)。
+    """Old-system layout page -> (page name, article references).
 
-    版名取自 <title>（第N版:版名 格式），取不到时默认 第{page_num:02d}版（对齐 Rust）；
-    文章为 href 含 nw.D110000gmrb 的 <a>，<a> 内 <br> 替换为空格后取纯文本。
+    Page name comes from <title> (第N版:版名), defaulting to 第{page_num:02d}版 when
+    absent (mirrors Rust). Articles are the anchors whose href contains
+    nw.D110000gmrb; an anchor's title is its text with <br> turned into a space.
     """
     name = f"第{page_num:02d}版"
     t = soup.find("title")
@@ -135,11 +150,9 @@ def _old_page_items(
         href = a.get("href", "")
         if not href or NW_HREF not in href:
             continue
-        # 复制 <a> 的 HTML 再替换 <br>，避免改动原文档
-        clone = BeautifulSoup(str(a), "html.parser")
-        for br in clone.find_all("br"):
-            br.replace_with(" ")
-        title = clone.get_text().strip()
+        # <br> becomes a space, then tags are stripped and entities unescaped; this
+        # avoids rebuilding a parse tree for every anchor.
+        title = html_module.unescape(RE_TAG.sub("", RE_BR.sub(" ", str(a)))).strip()
         if not title:
             continue
         url = href if href.startswith("http") else join_url(page_url, href)
@@ -153,18 +166,26 @@ def _get_old_editions(http: HttpSession, d: date) -> list[Edition]:
     if html is None:
         return []
 
-    soup = BeautifulSoup(html, "html.parser")
+    soup = make_soup(html)
     name, refs = _old_page_items(soup, url1, 1)
     if not refs:
-        return []
+        raise EmptyIndexError("旧版第 1 版页未解析出任何文章")
     editions = [Edition(num=1, name=name, articles=refs)]
 
-    urls = [_old_layout_url(d, p) for p in range(2, MAX_PAGES + 1)]
-    bodies = _fetch_texts(http, urls, silent_404=True)
-    for p, url, body in zip(range(2, MAX_PAGES + 1), urls, bodies):
+    # Remaining page numbers come from the page-1 links when discoverable; otherwise
+    # fall back to probing 2..MAX_PAGES.
+    pages = [
+        p for p in page_numbers_from_links(soup, RE_OLD_PAGE_HREF, MAX_PAGES) if p >= 2
+    ]
+    if not pages:
+        pages = list(range(2, MAX_PAGES + 1))
+
+    urls = [_old_layout_url(d, p) for p in pages]
+    bodies = fetch_texts(http, urls, silent_404=True)
+    for p, url, body in zip(pages, urls, bodies):
         if body is None:
             continue
-        doc = BeautifulSoup(body, "html.parser")
+        doc = make_soup(body)
         page_name, arts = _old_page_items(doc, url, p)
         if arts:
             editions.append(Edition(num=p, name=page_name, articles=arts))
@@ -177,7 +198,7 @@ def _fetch_new_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
     html = http.get_text(r.url, silent_404=False)
     if html is None:
         return None
-    doc = BeautifulSoup(html, "html.parser")
+    doc = make_soup(html)
 
     t = doc.find("title")
     title = t.get_text().strip() if t is not None else ""
@@ -198,7 +219,7 @@ def _fetch_old_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
     html = http.get_text(r.url, silent_404=False)
     if html is None:
         return None
-    doc = BeautifulSoup(html, "html.parser")
+    doc = make_soup(html)
 
     title = r.title
     desc = meta_content(doc, "description")
@@ -228,7 +249,7 @@ def _fetch_old_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
 
 
 class GuangmingCrawler(SiteCrawler):
-    """光明日报站点爬虫。"""
+    """Guangming Daily crawler."""
 
     crawler_id = "gmrb"
     name = "光明日报"

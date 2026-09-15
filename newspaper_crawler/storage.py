@@ -1,6 +1,6 @@
-"""原子写入：写临时文件后 os.replace，Windows 下重试 3 次。
+"""Atomic file writes: write to a temp sibling, then ``os.replace``; retry 3x.
 
-对齐 Rust 版 src-tauri/src/crawler/storage.rs。
+Mirrors Rust src-tauri/src/crawler/storage.rs.
 """
 
 from __future__ import annotations
@@ -11,11 +11,23 @@ from pathlib import Path
 
 
 def atomic_write(path: Path, content: str) -> None:
-    """原子写入文本文件（UTF-8）。父目录自动创建。"""
+    """Write UTF-8 text atomically, creating parent directories.
+
+    Invariant: the destination is either absent or complete; a reader never observes
+    a partially written file.
+
+    Raises:
+        OSError: the temp file could not be written, or ``os.replace`` failed on all
+            3 attempts. The temp file is removed in both cases.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text(content, encoding="utf-8")
+    try:
+        tmp.write_text(content, encoding="utf-8")
+    except OSError:
+        tmp.unlink(missing_ok=True)
+        raise
     for i in range(3):
         try:
             os.replace(tmp, path)
@@ -24,4 +36,5 @@ def atomic_write(path: Path, content: str) -> None:
             if i == 2:
                 tmp.unlink(missing_ok=True)
                 raise
+            # Windows may refuse the replace while the destination is open.
             time.sleep(0.1 * (i + 1))
