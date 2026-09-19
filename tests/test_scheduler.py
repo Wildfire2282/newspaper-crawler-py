@@ -11,6 +11,7 @@ from newspaper_crawler.models import (
     Article,
     ArticleRef,
     CrawlOptions,
+    CrawlStats,
     Edition,
     OutputFormat,
 )
@@ -240,6 +241,33 @@ def test_run_multi_runs_sites_in_parallel(tmp_path, no_network, monkeypatch):
     stats = run_multi(["a", "b"], _opts(tmp_path), lambda ev: None)
 
     assert stats.days_success == 2
+
+
+def test_run_multi_cancels_sites_that_never_started(tmp_path, monkeypatch):
+    """A KeyboardInterrupt must cancel sites still queued, not run them to the end.
+
+    One worker: site a runs and aborts, site b is queued behind it. Cancelling the
+    pool is what stops b from taking over the freed worker.
+    """
+    started = threading.Event()
+    site_a = _Site(_one_edition, name="甲报")
+    site_b = _Site(_one_edition, name="乙报")
+
+    def crawl(site, opts, on_event, on_day=None, days=None):
+        if site is site_a:
+            raise KeyboardInterrupt
+        started.set()
+        return CrawlStats()
+
+    monkeypatch.setattr(
+        scheduler, "lookup", lambda k: site_a if k == "a" else site_b
+    )
+    monkeypatch.setattr(scheduler, "run_site", crawl)
+
+    with pytest.raises(KeyboardInterrupt):
+        run_multi(["a", "b"], _opts(tmp_path), lambda ev: None, max_site_workers=1)
+
+    assert not started.is_set()
 
 
 def test_run_multi_site_workers_one_is_serial(tmp_path, no_network, monkeypatch):

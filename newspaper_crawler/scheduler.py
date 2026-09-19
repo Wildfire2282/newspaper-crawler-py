@@ -254,6 +254,10 @@ def run_multi(
         called concurrently and need no synchronization of their own. ``on_day``
         carries no such guarantee (it is meant for a thread-safe store). A site that
         fails outright does not abort the others.
+
+        A KeyboardInterrupt in the main thread unwinds this function and cancels the
+        site tasks that have not started yet; the site already running keeps going
+        until its current day is written out.
     """
     started = time.monotonic()
     merged = CrawlStats()
