@@ -1,8 +1,10 @@
 """Interactive terminal UI (rich menus).
 
-The interactive flow was moved here verbatim from the original ``crawler.py``;
-behavior is unchanged apart from preference persistence: menu choices are written to
-the project state file as they are made, and re-applied the next time the menu opens.
+Menu choices are written to the project state file as they are made and re-applied
+the next time the menu opens. Downloading shares the scheduler and the ledger with the
+CLI: every (site, date) outcome is recorded as it happens, an interrupted run leaves
+the unfinished days pending, and a resume re-runs exactly those days - dropping sites
+that no longer resolve, the same way ``crawl --resume`` does.
 """
 
 from __future__ import annotations

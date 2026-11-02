@@ -4,7 +4,8 @@ Contract:
 - results go to stdout, progress and logs to stderr;
 - exit codes: 0 success / 1 runtime error / 2 usage error / 130 interrupted;
 - with ``--json``, stdout is exactly one JSON object and rich output degrades to
-  plain text.
+  plain text;
+- both streams are forced to UTF-8, so the output is readable on any system locale.
 """
 
 from __future__ import annotations

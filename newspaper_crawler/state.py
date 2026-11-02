@@ -4,9 +4,9 @@ Contract:
 - one file per working directory: ``./.newspaper-crawler.json`` (JSON, version 1);
 - the file is written through :func:`newspaper_crawler.storage.atomic_write`, so a
   reader either sees the previous content or the complete new one;
-- loading never raises: a missing or corrupt file falls back to defaults (a corrupt
-  file is preserved next to it as ``.bak``), because a state file must never block
-  the downloader from running.
+- loading never raises: a missing or corrupt file - or one whose ``version`` is not
+  supported - falls back to defaults and is preserved next to it as ``.bak``, because
+  a state file must never block the downloader from running.
 
 The per-day ledger is what makes ``crawl --resume`` precise: ``pending`` /
 ``failed`` entries are the work left over from an interrupted or failing run, while
