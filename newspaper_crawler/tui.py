@@ -317,7 +317,7 @@ def start_download(state: dict, store: Optional[StateStore] = None) -> None:
         site = lookup(key)
         site_names.append(site.name if site else key)
 
-    fmt = OutputFormat.TXT if state["output_format"] == "txt" else OutputFormat.MD
+    fmt = OutputFormat.parse(state["output_format"])
     opts = make_crawl_options(
         start=state["start_date"],
         end=state["end_date"],
@@ -388,7 +388,7 @@ def _resume_options(open_days, store: StateStore):
     if not usable:
         return None
     keys = sorted({d.site for d in usable})
-    fmt = OutputFormat.TXT if fmt_name == "txt" else OutputFormat.MD
+    fmt = OutputFormat.parse(fmt_name)
     dates = [d.date for d in usable]
     opts = make_crawl_options(
         start=min(dates),

@@ -18,6 +18,11 @@ class OutputFormat(str, Enum):
     def ext(self) -> str:
         return self.value
 
+    @classmethod
+    def parse(cls, value: str) -> "OutputFormat":
+        """Map a CLI/stored string to a format; only "txt" means plain text."""
+        return cls.TXT if value == "txt" else cls.MD
+
 
 @dataclass(slots=True)
 class ArticleRef:

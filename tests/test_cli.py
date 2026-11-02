@@ -720,3 +720,29 @@ def test_console_never_assumes_a_win32_console_when_redirected(monkeypatch):
     monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="utf-8"))
 
     assert _console().legacy_windows is False
+
+
+def test_plan_txt_reports_txt_paths(tmp_path, capsys):
+    assert (
+        main(
+            [
+                "plan",
+                "--sites",
+                "rmrb",
+                "--start",
+                "2026-09-01",
+                "--end",
+                "2026-09-01",
+                "-o",
+                str(tmp_path),
+                "-f",
+                "txt",
+                "--json",
+            ]
+        )
+        == EXIT_OK
+    )
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["format"] == "txt"
+    assert payload["days"][0]["path"].endswith("2026-09-01.txt")

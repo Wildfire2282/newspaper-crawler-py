@@ -25,6 +25,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+from .models import OutputFormat
 from .storage import atomic_write
 from .util import parse_date
 
@@ -237,7 +238,7 @@ class Preferences:
             end_date=end,
             output_dir=path.as_posix(),
             # The value becomes an argparse default, so it must be a real choice.
-            output_format=fmt if fmt in ("md", "txt") else base.output_format,
+            output_format=OutputFormat.parse(fmt).ext(),
             max_workers=max(1, workers),
             fast_mode=_bool(raw.get("fast_mode"), base.fast_mode),
             skip_existing=_bool(raw.get("skip_existing"), base.skip_existing),

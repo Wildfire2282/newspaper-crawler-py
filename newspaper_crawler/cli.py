@@ -375,10 +375,6 @@ def _resolve_output_dir(text: str | None) -> Path:
     return path if path.is_absolute() else Path.cwd() / path
 
 
-def _output_format(fmt: str) -> OutputFormat:
-    return OutputFormat.TXT if fmt == "txt" else OutputFormat.MD
-
-
 def _emit_json(obj: dict) -> None:
     print(json.dumps(obj, ensure_ascii=False, indent=2))
 
@@ -448,7 +444,7 @@ def _resolve_settings(args: argparse.Namespace) -> _Settings:
         start=args.start,
         end=args.end,
         output_dir=_resolve_output_dir(args.output_dir),
-        fmt=_output_format(args.fmt),
+        fmt=OutputFormat.parse(args.fmt),
     )
 
 
@@ -564,7 +560,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         # Resume mode is ledger-driven: the work is exactly the open (site, date)
         # pairs, so the days are listed as-is instead of re-walking a date range.
         open_days, output_dir, fmt_name = resumed
-        fmt = _output_format(fmt_name)
+        fmt = OutputFormat.parse(fmt_name)
         resolved = [(d, lookup(d.site)) for d in open_days]
         unknown = sorted({d.site for d, site in resolved if site is None})
         days = []
@@ -670,7 +666,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         sites = [s for s in (lookup(k) for k in keys) if s is not None]
         dates = [d.date for d in open_days]
         start, end = min(dates), max(dates)
-        fmt = _output_format(fmt_name)
+        fmt = OutputFormat.parse(fmt_name)
     else:
         settings = _resolve_settings(args)
         sites, unknown = settings.sites, settings.unknown

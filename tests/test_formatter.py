@@ -94,3 +94,15 @@ def test_md_anchor_rules():
     assert md_anchor("Hello World") == "hello-world"
     assert md_anchor("") == "section"
     assert md_anchor("！！！") == "section"
+
+
+def test_anchors_dedupe_editions_not_just_articles():
+    """Two editions with the same label (e.g. a repeated nav entry) need distinct ids."""
+    editions = [
+        Edition(num=1, name="要闻", articles=[]),
+        Edition(num=1, name="要闻", articles=[]),
+    ]
+
+    ed_anchors, _ = anchors(editions)
+
+    assert ed_anchors == ["第01版-要闻", "第01版-要闻-1"]
