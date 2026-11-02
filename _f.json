@@ -1,0 +1,34 @@
+{
+  "ok": true,
+  "sites": [
+    "rmrb",
+    "gmrb",
+    "dzrb",
+    "jjrb"
+  ],
+  "unknown_sites": [],
+  "start_date": "2026-10-30",
+  "end_date": "2026-10-30",
+  "output_dir": "E:\\workspace_win\\newspaper-crawler-py\\_f",
+  "format": "md",
+  "elapsed_secs": 2.6,
+  "resumed": false,
+  "stats": {
+    "days_attempted": 4,
+    "days_success": 4,
+    "days_skipped": 0,
+    "days_empty": 0,
+    "total_editions": 65,
+    "total_articles": 285,
+    "total_errors": 0
+  },
+  "files": [
+    "E:\\workspace_win\\newspaper-crawler-py\\_f\\经济日报\\2026\\10\\2026-10-30.md",
+    "E:\\workspace_win\\newspaper-crawler-py\\_f\\大众日报\\2026\\10\\2026-10-30.md",
+    "E:\\workspace_win\\newspaper-crawler-py\\_f\\光明日报\\2026\\10\\2026-10-30.md",
+    "E:\\workspace_win\\newspaper-crawler-py\\_f\\人民日报\\2026\\10\\2026-10-30.md"
+  ],
+  "skipped": [],
+  "errors": [],
+  "warnings": []
+}

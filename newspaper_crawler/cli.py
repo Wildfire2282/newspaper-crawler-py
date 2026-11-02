@@ -191,6 +191,7 @@ _PLAN_EPILOG = """\
 
 --resume:
   只处理上次运行中仍为 pending（中断）或 failed（失败）的日期；无账本时为用法错误。
+  续传按账本执行，--sites/--start/--end/-o/-f 一律忽略（用账本记录的值）。
 
 --json 输出字段:
   sites / unknown_sites / start_date / end_date / output_dir / format / resumed
@@ -214,7 +215,8 @@ _CRAWL_EPILOG = """\
 状态持久化:
   偏好与运行账本存于当前目录的 .newspaper-crawler.json（可用 CRAWLER_STATE 覆盖路径）。
   未显式给出的参数沿用该文件中的上次取值；--resume 则按账本只重跑 pending/failed
-  的日期，用 crawler runs 查看历史。
+  的日期，用 crawler runs 查看历史。--resume 按账本执行，--sites/--start/--end/
+  -o/-f 一律忽略；账本里已不存在的站点会报错并跳过，不再写回新账本。
 
 --json 输出字段:
   ok              是否没有日级失败与未识别站点（单篇正文抓取失败只计入
@@ -655,12 +657,18 @@ def cmd_crawl(args: argparse.Namespace) -> int:
 
     if resumed is not None:
         open_days, output_dir, fmt_name = resumed
+        # A ledger written by another version may name a site that no longer exists.
+        # Drop those days from the resume: keeping them would make every later
+        # --resume fail again without ever making progress. They are reported below.
+        usable = [d for d in open_days if lookup(d.site) is not None]
+        unknown = sorted({d.site for d in open_days} - {d.site for d in usable})
+        if not usable:
+            print("错误：账本中的站点均已不可用，无法续传。", file=sys.stderr)
+            return EXIT_ERROR
+        open_days = usable
         keys = sorted({d.site for d in open_days})
         sites = [s for s in (lookup(k) for k in keys) if s is not None]
         dates = [d.date for d in open_days]
-        # A ledger written by an older version may name a site that no longer exists:
-        # report it instead of exiting 0 having crawled nothing.
-        unknown = [k for k in keys if lookup(k) is None]
         start, end = min(dates), max(dates)
         fmt = _output_format(fmt_name)
     else:

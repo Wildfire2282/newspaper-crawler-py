@@ -593,8 +593,9 @@ def test_runs_table_output_lists_sites_and_status(tmp_path, capsys):
 def test_crawl_resume_reports_ledger_sites_that_no_longer_exist(tmp_path, monkeypatch, capsys):
     """A ledger naming an unknown site must fail loudly, not exit 0 having crawled 0."""
     store = StateStore()
-    _record_run(store, tmp_path, sites=("gone",))
-    store.record_day("gone", date(2026, 9, 1), FAILED)  # leaves a day to resume
+    _record_run(store, tmp_path, sites=("gone", "rmrb"))
+    store.record_day("gone", date(2026, 9, 1), FAILED)
+    store.record_day("rmrb", date(2026, 9, 1), FAILED)  # both leave a day to resume
 
     seen: list[list[str]] = []
 
@@ -608,7 +609,18 @@ def test_crawl_resume_reports_ledger_sites_that_no_longer_exist(tmp_path, monkey
     payload = json.loads(capsys.readouterr().out)
     assert payload["unknown_sites"] == ["gone"]
     assert payload["ok"] is False
-    assert seen == [["gone"]]
+    assert seen == [["rmrb"]]  # the site that still exists keeps its work
+    # Dropping the unusable day is what lets the next --resume make progress.
+    assert [d.site for d in StateStore().last_run.days] == ["rmrb"]
+
+
+def test_crawl_resume_fails_when_no_ledger_site_exists(tmp_path, capsys):
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("gone",))
+    store.record_day("gone", date(2026, 9, 1), FAILED)
+
+    assert main(["crawl", "--resume", "--quiet"]) == EXIT_ERROR
+    assert "均已不可用" in capsys.readouterr().err
 
 
 def test_crawl_interrupt_still_closes_the_ledger(tmp_path, monkeypatch, capsys):
@@ -653,17 +665,16 @@ def test_runs_survives_a_ledger_with_an_unknown_status(tmp_path, capsys):
     assert "running 1" in out  # shown verbatim instead of raising KeyError
 
 
-def test_crawl_progress_keeps_bracketed_site_keys(tmp_path, monkeypatch, capsys):
+def test_progress_keeps_bracketed_site_keys(capsys):
     """The progress renderer must not treat "[gone]" as rich markup and drop it."""
-    store = StateStore()
-    _record_run(store, tmp_path, sites=("gone",))
-    store.record_day("gone", date(2026, 9, 1), FAILED)
+    progress = _Progress(_console(stderr=True))
+    progress(
+        ProgressEvent(
+            kind="log", level="warn", site="gone", message="[gone] 未找到站点，已跳过"
+        )
+    )
 
-    # The real run_multi: an unresolvable key never reaches the network.
-    assert main(["crawl", "--resume"]) == EXIT_ERROR
-
-    err = capsys.readouterr().err
-    assert "[gone] 未找到站点" in err
+    assert "[gone] 未找到站点" in capsys.readouterr().err
 
 
 def test_main_forces_utf8_output_on_a_legacy_locale(monkeypatch):
