@@ -18,3 +18,9 @@ def isolated_state(tmp_path, monkeypatch):
     monkeypatch.setenv(state.ENV_STATE_PATH, str(tmp_path / "state.json"))
     monkeypatch.setattr(cli, "_store", None)
     yield tmp_path / "state.json"
+
+
+@pytest.fixture(autouse=True)
+def wide_console(monkeypatch):
+    """Pin Rich's non-tty width, otherwise output tables truncate with "…"."""
+    monkeypatch.setenv("COLUMNS", "200")

@@ -65,7 +65,7 @@ def test_preferences_round_trip_with_relative_output_dir(tmp_path):
     assert reloaded.site_keys == ["rmrb", "gmrb"]
     assert reloaded.start_date == date(2026, 9, 1)
     assert reloaded.end_date == date(2026, 9, 3)
-    assert reloaded.output_dir == str(tmp_path / "out")
+    assert reloaded.output_dir == (tmp_path / "out").as_posix()
     assert reloaded.output_format == "txt"
     assert reloaded.max_workers == 8
     assert reloaded.fast_mode is True
@@ -81,7 +81,7 @@ def test_preferences_keep_absolute_output_dir_outside_cwd(tmp_path):
     assert json.loads(store.path.read_text(encoding="utf-8"))["preferences"][
         "output_dir"
     ] == outside.as_posix()
-    assert StateStore(tmp_path).preferences.output_dir == str(outside)
+    assert StateStore(tmp_path).preferences.output_dir == outside.as_posix()
 
 
 def test_invalid_preference_fields_fall_back_to_defaults(tmp_path):
@@ -106,7 +106,7 @@ def test_invalid_preference_fields_fall_back_to_defaults(tmp_path):
     assert prefs.end_date == default_preferences().end_date
     assert prefs.max_workers == 1  # clamped, never zero
     assert prefs.skip_existing is True  # a non-bool is ignored
-    assert prefs.output_dir == str(tmp_path / "downloads")
+    assert prefs.output_dir == (tmp_path / "downloads").as_posix()
 
 
 def test_preferences_reject_reversed_range(tmp_path):

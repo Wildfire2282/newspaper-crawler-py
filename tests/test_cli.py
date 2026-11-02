@@ -167,7 +167,10 @@ def test_plan_json_marks_missing_days_for_fetch(tmp_path, capsys):
     assert payload["sites"] == ["rmrb"]
     assert payload["summary"] == {"fetch": 2, "skip": 0}
     assert payload["days"][0]["action"] == "fetch"
-    assert payload["days"][0]["path"].endswith("人民日报/2026/09/2026-09-01.md")
+    assert (
+        Path(payload["days"][0]["path"])
+        == tmp_path / "人民日报" / "2026" / "09" / "2026-09-01.md"
+    )
 
 
 def test_plan_marks_existing_file_as_skip(tmp_path, capsys):
@@ -263,16 +266,13 @@ def test_help_examples_are_runnable_commands(capsys):
 
 
 def test_progress_collects_files_skipped_and_errors():
+    done_path, skip_path = Path("/out/a.md"), Path("/out/b.md")
     progress = _Progress(None)
     progress(
-        ProgressEvent(
-            kind="day_done", site="人民日报", path=Path("/out/a.md"), message="m"
-        )
+        ProgressEvent(kind="day_done", site="人民日报", path=done_path, message="m")
     )
     progress(
-        ProgressEvent(
-            kind="day_skip", site="人民日报", path=Path("/out/b.md"), message="m"
-        )
+        ProgressEvent(kind="day_skip", site="人民日报", path=skip_path, message="m")
     )
     progress(
         ProgressEvent(
@@ -281,8 +281,8 @@ def test_progress_collects_files_skipped_and_errors():
     )
     progress(ProgressEvent(kind="log", level="error", site="人民日报", message="x"))
 
-    assert progress.files == ["/out/a.md"]
-    assert progress.skipped == ["/out/b.md"]
+    assert progress.files == [str(done_path)]
+    assert progress.skipped == [str(skip_path)]
     assert progress.errors == [
         {"site": "人民日报", "date": "2026-09-01", "message": "e"},
         {"site": "人民日报", "date": None, "message": "x"},
@@ -434,7 +434,7 @@ def test_crawl_remembers_the_settings_it_used(tmp_path, monkeypatch, capsys):
     assert store.preferences.site_keys == ["rmrb"]
     assert store.preferences.start_date == date(2026, 9, 1)
     assert store.preferences.end_date == date(2026, 9, 2)
-    assert store.preferences.output_dir == str(tmp_path)
+    assert store.preferences.output_dir == tmp_path.as_posix()
     assert store.preferences.output_format == "txt"
     assert store.preferences.site_workers == 2
 

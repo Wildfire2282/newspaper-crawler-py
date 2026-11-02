@@ -54,12 +54,12 @@ def test_parse_site_selection_all_and_indexes():
 # ---------------------------------------------------------------- preferences
 
 
-def test_state_from_preferences_overrides_every_default():
+def test_state_from_preferences_overrides_every_default(tmp_path):
     prefs = Preferences(
         site_keys=["rmrb"],
         start_date=date(2026, 9, 1),
         end_date=date(2026, 9, 3),
-        output_dir="/tmp/paper",
+        output_dir=tmp_path.as_posix(),
         output_format="txt",
         max_workers=9,
         fast_mode=True,
@@ -75,7 +75,7 @@ def test_state_from_preferences_overrides_every_default():
     assert state["max_workers"] == 9
     assert state["fast_mode"] is True
     assert state["skip_existing"] is False
-    assert str(state["output_dir"]) == "/tmp/paper"
+    assert state["output_dir"] == tmp_path
 
 
 def test_state_from_defaults_matches_default_state(tmp_path, monkeypatch):
