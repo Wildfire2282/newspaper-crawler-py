@@ -12,6 +12,7 @@ from newspaper_crawler.cli import (
     EXIT_ERROR,
     EXIT_OK,
     EXIT_USAGE,
+    _console,
     _Progress,
     _resolve_output_dir,
     _resolve_sites,
@@ -663,3 +664,48 @@ def test_crawl_progress_keeps_bracketed_site_keys(tmp_path, monkeypatch, capsys)
 
     err = capsys.readouterr().err
     assert "[gone] 未找到站点" in err
+
+
+def test_main_forces_utf8_output_on_a_legacy_locale(monkeypatch):
+    """On a non-Chinese locale (cp1252) the first line of output used to crash."""
+    import io
+
+    buf = io.BytesIO()
+    stdout = io.TextIOWrapper(buf, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    try:
+        assert main(["sites", "--json"]) == EXIT_OK
+        stdout.flush()
+    finally:
+        monkeypatch.undo()
+
+    payload = json.loads(buf.getvalue().decode("utf-8"))
+    assert {s["id"] for s in payload["sites"]} == {"rmrb", "gmrb", "jjrb", "dzrb"}
+
+
+def test_table_output_survives_a_redirected_non_tty_stream(monkeypatch):
+    """Table output to a pipe or file must come out as plain UTF-8, not crash."""
+    import io
+
+    buf = io.BytesIO()
+    stdout = io.TextIOWrapper(buf, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    try:
+        assert main(["sites"]) == EXIT_OK
+        stdout.flush()
+    finally:
+        monkeypatch.undo()
+
+    out = buf.getvalue().decode("utf-8")
+    assert "可用站点" in out
+    assert "rmrb" in out
+
+
+def test_console_never_assumes_a_win32_console_when_redirected(monkeypatch):
+    """rich's legacy Windows renderer writes through the console handle and raises
+    OSError on a real pipe; the flag is what keeps redirected output printable."""
+    import io
+
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="utf-8"))
+
+    assert _console().legacy_windows is False

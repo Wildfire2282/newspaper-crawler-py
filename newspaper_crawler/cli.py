@@ -547,7 +547,7 @@ def cmd_sites(args: argparse.Namespace) -> int:
     table.add_column("主页", style="dim")
     for s in sites:
         table.add_row(s.crawler_id, s.name, " / ".join(s.aliases or []), s.base_url)
-    Console(markup=False).print(table)
+    _console().print(table)
     return EXIT_OK
 
 
@@ -626,7 +626,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json(result)
     else:
-        console = Console(markup=False)
+        console = _console()
         console.print(
             f"站点：{site_names}\n"
             f"日期：{result['start_date']} ~ {result['end_date']}\n"
@@ -685,9 +685,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     console = (
         None
         if args.quiet
-        # markup=False: messages embed site keys and paths, which rich would
-        # otherwise eat when they look like a [style] tag.
-        else Console(stderr=True, no_color=args.json, highlight=False, markup=False)
+        else _console(stderr=True, no_color=args.json, highlight=False)
     )
     progress = _Progress(console)
 
@@ -765,7 +763,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json(result)
     else:
-        out = Console(markup=False)
+        out = _console()
         out.print(f"完成 · {stats}")
         out.print(f"输出目录：{output_dir}")
         if progress.files:
@@ -808,7 +806,7 @@ def cmd_runs(args: argparse.Namespace) -> int:
         _emit_json(result)
         return EXIT_OK
 
-    console = Console(markup=False)
+    console = _console()
     if last is None:
         console.print(f"暂无运行记录（账本：{store.path}）")
         return EXIT_OK
@@ -898,8 +896,44 @@ def _run_subcommand(argv: list[str]) -> int:
     return args.func(args)
 
 
+def _console(*, stderr: bool = False, **kwargs) -> Console:
+    """Console for CLI output, safe when stdout/stderr is a pipe or a file.
+
+    Args:
+        stderr: write to stderr instead of stdout.
+        kwargs: forwarded to :class:`rich.console.Console`.
+
+    Note:
+        ``legacy_windows`` is disabled for non-terminals on purpose: rich's legacy
+        Windows renderer writes through the console handle, which raises OSError
+        instead of printing when the output has been redirected. ``markup=False``
+        because CLI text embeds site keys and paths inside square brackets.
+    """
+    stream = sys.stderr if stderr else sys.stdout
+    return Console(
+        stderr=stderr,
+        markup=False,
+        legacy_windows=None if stream.isatty() else False,
+        **kwargs,
+    )
+
+
+def _force_utf8_output() -> None:
+    """Make stdout/stderr UTF-8 when the system picked a legacy locale.
+
+    Windows defaults redirected output to the OEM/ANSI code page (cp936, cp1252, ...);
+    every command prints Chinese immediately, so without this the first line dies with
+    UnicodeEncodeError on any non-Chinese locale.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        encoding = (getattr(stream, "encoding", None) or "").lower()
+        if encoding not in ("utf-8", "utf8") and hasattr(stream, "reconfigure"):
+            stream.reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: list[str] | None = None) -> int:
     """Single entry point: TUI when invoked with no args on a TTY, else subcommands."""
+    _force_utf8_output()
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv and sys.stdin.isatty() and sys.stdout.isatty():
         from . import tui

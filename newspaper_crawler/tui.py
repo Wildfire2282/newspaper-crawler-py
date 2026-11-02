@@ -8,6 +8,7 @@ the project state file as they are made, and re-applied the next time the menu o
 from __future__ import annotations
 
 import os
+import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
@@ -32,7 +33,8 @@ from .state import (
 )
 from .util import configure_logging, make_crawl_options, parse_date
 
-console = Console()
+# Redirected output must not go through rich's Win32 renderer (OSError on a pipe).
+console = Console(legacy_windows=None if sys.stdout.isatty() else False)
 
 
 class _InputClosed(Exception):
