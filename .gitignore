@@ -33,3 +33,7 @@ htmlcov/
 # Environment variables and secrets
 .env
 *.env
+
+# Scratch files from local smoke runs (root only)
+/_*/
+/_*
