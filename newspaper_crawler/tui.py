@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Optional
 
 from rich.console import Console
+from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
@@ -69,7 +70,7 @@ def _parse_site_selection(answer: str, count: int) -> list:
         if p.isdigit() and 1 <= int(p) <= count:
             idxs.append(int(p))
         else:
-            console.print(f"[yellow]忽略无效输入：{p}[/yellow]")
+            console.print(f"[yellow]忽略无效输入：{escape(p)}[/yellow]")
     return sorted(set(idxs))
 
 
@@ -198,7 +199,7 @@ def choose_dates(state: dict, store: Optional[StateStore] = None) -> None:
         start = parse_date(start_s)
         end = parse_date(end_s)
     except ValueError as exc:
-        console.print(f"[red]{exc}，已保持原范围[/red]")
+        console.print(f"[red]{escape(str(exc))}，已保持原范围[/red]")
         return
 
     if end < start:
@@ -224,7 +225,7 @@ def choose_output_dir(state: dict, store: Optional[StateStore] = None) -> None:
         if not path.is_absolute():
             path = Path.cwd() / path
         state["output_dir"] = path
-    console.print(f"[green]输出目录：{state['output_dir']}[/green]")
+    console.print(f"[green]输出目录：{escape(str(state['output_dir']))}[/green]")
     save_preferences(state, store)
 
 
@@ -286,7 +287,9 @@ def handle_event(ev) -> None:
         color = {"warn": "yellow", "error": "red"}.get(ev.level, "cyan")
     else:
         color = _KIND_COLOR.get(ev.kind, "cyan")
-    console.print(f"[{color}]{ev.message}[/{color}]")
+    # Messages quote site keys and page titles verbatim; escape so rich does not read
+    # "[rmrb]" as a style tag and silently drop it.
+    console.print(f"[{color}]{escape(ev.message)}[/{color}]")
 
 
 # ---------------------------------------------------------------- download flow
@@ -323,7 +326,7 @@ def start_download(state: dict, store: Optional[StateStore] = None) -> None:
         skip_existing=state["skip_existing"],
     )
 
-    summary = (
+    summary = escape(
         f"报纸：{'、'.join(site_names)}\n"
         f"日期：{state['start_date']} ~ {state['end_date']}\n"
         f"输出目录：{state['output_dir']}\n"
@@ -374,7 +377,7 @@ def _resume_options(open_days, store: StateStore):
     keys = sorted({d.site for d in open_days})
     missing = [k for k in keys if lookup(k) is None]
     if missing:
-        console.print(f"[red]账本中的站点已不可用：{'、'.join(missing)}[/red]")
+        console.print(f"[red]账本中的站点已不可用：{escape('、'.join(missing))}[/red]")
         return None
     fmt = OutputFormat.TXT if fmt_name == "txt" else OutputFormat.MD
     dates = [d.date for d in open_days]
@@ -432,7 +435,7 @@ def run_crawl(
     if store is not None:
         store.finish_run(stats.as_dict())
     # opts.output_dir, not the menu state: a resume writes where the old run did.
-    console.print(f"[green]文件保存在：{opts.output_dir}[/green]")
+    console.print(f"[green]文件保存在：{escape(str(opts.output_dir))}[/green]")
 
 
 # ---------------------------------------------------------------- main flow
@@ -489,7 +492,7 @@ def run() -> int:
     try:
         store = StateStore()
     except OSError as exc:  # An unreadable state file must not block the menu.
-        console.print(f"[yellow]状态文件不可用（{exc}），本次不保存设置[/yellow]")
+        console.print(f"[yellow]状态文件不可用（{escape(str(exc))}），本次不保存设置[/yellow]")
         store = None
     try:
         print_banner()

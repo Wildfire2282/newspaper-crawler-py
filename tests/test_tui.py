@@ -267,3 +267,14 @@ def test_start_download_runs_fresh_when_the_resume_offer_is_declined(
     assert prompts[0].startswith("发现上次未完成的 1 天")
     assert prompts[-1] == "确认开始下载？"
     assert ran == [["rmrb", "gmrb", "dzrb", "jjrb"]]  # a fresh run over all sites
+
+
+def test_handle_event_keeps_bracketed_site_keys(capsys):
+    """Bracketed ASCII keys look like rich markup and used to be dropped."""
+    tui.handle_event(
+        ProgressEvent(
+            kind="log", level="warn", site="rmrb", message="[rmrb] 未找到站点，已跳过"
+        )
+    )
+
+    assert "[rmrb] 未找到站点，已跳过" in capsys.readouterr().out

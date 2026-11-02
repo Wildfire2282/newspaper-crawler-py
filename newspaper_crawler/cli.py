@@ -217,7 +217,8 @@ _CRAWL_EPILOG = """\
   的日期，用 crawler runs 查看历史。
 
 --json 输出字段:
-  ok              是否全部成功（无错误且无未识别站点）
+  ok              是否没有日级失败与未识别站点（单篇正文抓取失败只计入
+                  stats.total_errors，不影响 ok；以 stats 为准）
   sites           实际抓取的站点 ID
   unknown_sites   无法识别的站点输入
   output_dir      输出目录（绝对路径）
@@ -546,7 +547,7 @@ def cmd_sites(args: argparse.Namespace) -> int:
     table.add_column("主页", style="dim")
     for s in sites:
         table.add_row(s.crawler_id, s.name, " / ".join(s.aliases or []), s.base_url)
-    Console().print(table)
+    Console(markup=False).print(table)
     return EXIT_OK
 
 
@@ -625,7 +626,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json(result)
     else:
-        console = Console()
+        console = Console(markup=False)
         console.print(
             f"站点：{site_names}\n"
             f"日期：{result['start_date']} ~ {result['end_date']}\n"
@@ -684,7 +685,9 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     console = (
         None
         if args.quiet
-        else Console(stderr=True, no_color=args.json, highlight=False)
+        # markup=False: messages embed site keys and paths, which rich would
+        # otherwise eat when they look like a [style] tag.
+        else Console(stderr=True, no_color=args.json, highlight=False, markup=False)
     )
     progress = _Progress(console)
 
@@ -762,7 +765,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     if args.json:
         _emit_json(result)
     else:
-        out = Console()
+        out = Console(markup=False)
         out.print(f"完成 · {stats}")
         out.print(f"输出目录：{output_dir}")
         if progress.files:
@@ -805,7 +808,7 @@ def cmd_runs(args: argparse.Namespace) -> int:
         _emit_json(result)
         return EXIT_OK
 
-    console = Console()
+    console = Console(markup=False)
     if last is None:
         console.print(f"暂无运行记录（账本：{store.path}）")
         return EXIT_OK

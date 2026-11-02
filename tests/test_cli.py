@@ -650,3 +650,16 @@ def test_runs_survives_a_ledger_with_an_unknown_status(tmp_path, capsys):
     assert main(["runs"]) == EXIT_OK
     out = capsys.readouterr().out
     assert "running 1" in out  # shown verbatim instead of raising KeyError
+
+
+def test_crawl_progress_keeps_bracketed_site_keys(tmp_path, monkeypatch, capsys):
+    """The progress renderer must not treat "[gone]" as rich markup and drop it."""
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("gone",))
+    store.record_day("gone", date(2026, 9, 1), FAILED)
+
+    # The real run_multi: an unresolvable key never reaches the network.
+    assert main(["crawl", "--resume"]) == EXIT_ERROR
+
+    err = capsys.readouterr().err
+    assert "[gone] 未找到站点" in err
