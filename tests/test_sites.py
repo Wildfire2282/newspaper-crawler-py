@@ -15,6 +15,8 @@ class _FakeHttp:
     so tests can assert on de-duplication and page discovery.
     """
 
+    concurrency = 8  # fetch_texts reads the per-host budget from the session
+
     def __init__(self, pages: dict[str, str]):
         self.pages = pages
         self.calls: list[str] = []

@@ -10,12 +10,10 @@ that no longer resolve, the same way ``crawl --resume`` does.
 from __future__ import annotations
 
 import os
-import sys
 from datetime import date
 from pathlib import Path
 from typing import Optional
 
-from rich.console import Console
 from rich.markup import escape
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
@@ -24,14 +22,14 @@ from rich.text import Text
 
 from . import __version__ as VERSION
 from .models import OutputFormat
+from .output import make_console
 from .registry import all_sites, lookup
 from .resume import ResumePlan, plan_resume, resume_days
 from .scheduler import run_multi
 from .state import Preferences, StateStore, default_preferences
 from .util import configure_logging, make_crawl_options, parse_date
 
-# Redirected output must not go through rich's Win32 renderer (OSError on a pipe).
-console = Console(legacy_windows=None if sys.stdout.isatty() else False)
+console = make_console(markup=True)
 
 
 class _InputClosed(Exception):

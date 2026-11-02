@@ -11,22 +11,21 @@ Contract:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 import time
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Optional
 
-from rich.console import Console
 from rich.table import Table
 
 from . import __version__ as VERSION
 from .base import SiteCrawler
 from .models import OutputFormat
+from .output import Progress, emit_json, force_utf8_output, make_console
 from .registry import all_sites, lookup
 from .resume import plan_resume
-from .scheduler import ProgressEvent, run_multi
+from .scheduler import run_multi
 from .state import DONE, EMPTY, FAILED, PENDING, SKIPPED, Preferences, StateStore
 from .util import configure_logging, make_crawl_options, parse_date
 
@@ -203,7 +202,8 @@ _CRAWL_EPILOG = """\
 
 站点调度:
   多个站点默认并行（不同站点是不同主机，互不影响对方请求频率）；
-  --site-workers 控制并行站点数，--workers 控制单站点内部的文章并发数。
+  --site-workers 控制并行站点数，--workers 控制单站点的请求并发数
+  （版面页与文章共用；调低会显著变慢，--workers 1 即串行）。
 
 状态持久化:
   偏好与运行账本存于当前目录的 .newspaper-crawler.json（可用 CRAWLER_STATE 覆盖路径）。
@@ -282,7 +282,7 @@ def build_parser(prefs: Optional[Preferences] = None) -> argparse.ArgumentParser
     p_crawl = _subparser(sub, "crawl", "执行下载", _CRAWL_EPILOG)
     _add_download_args(p_crawl)
     p_crawl.add_argument(
-        "--workers", type=int, default=5, help="单站点并发线程数（默认 5）"
+        "--workers", type=int, default=5, help="单站点并发请求数（默认 5）"
     )
     p_crawl.add_argument(
         "--fast", action="store_true", help="快速模式（降低延迟、加大并发）"
@@ -359,10 +359,6 @@ def _resolve_output_dir(text: str | None) -> Path:
         return Path.cwd() / "downloads"
     path = Path(text).expanduser()
     return path if path.is_absolute() else Path.cwd() / path
-
-
-def _emit_json(obj: dict) -> None:
-    print(json.dumps(obj, ensure_ascii=False, indent=2))
 
 
 # Set once per process by the entry point; every subcommand reads it through the
@@ -465,51 +461,13 @@ def _update_preferences(
     )
 
 
-class _Progress:
-    """Scheduler event handler: prints progress lines and collects JSON payload data.
-
-    Invariant: warnings and errors are kept apart. A warning (e.g. unrecognized site,
-    suspected site redesign) does not affect ``ok``; only a day_error does.
-    """
-
-    def __init__(self, console: Console | None):
-        self.console = console
-        self.files: list[str] = []
-        self.skipped: list[str] = []
-        self.errors: list[dict] = []
-        self.warnings: list[dict] = []
-
-    def __call__(self, ev: ProgressEvent) -> None:
-        if ev.path is not None:
-            if ev.kind == "day_done":
-                self.files.append(str(ev.path))
-            elif ev.kind == "day_skip":
-                self.skipped.append(str(ev.path))
-        if ev.kind == "day_error":
-            self.errors.append(self._entry(ev))
-        elif ev.kind == "log" and ev.level == "error":
-            self.errors.append({"site": ev.site, "date": None, "message": ev.message})
-        elif ev.kind == "log" and ev.level == "warn":
-            self.warnings.append(self._entry(ev))
-        if self.console is not None:
-            self.console.print(ev.message)
-
-    @staticmethod
-    def _entry(ev: ProgressEvent) -> dict:
-        return {
-            "site": ev.site,
-            "date": ev.date.isoformat() if ev.date else None,
-            "message": ev.message,
-        }
-
-
 # ---------------------------------------------------------------- subcommands
 
 
 def cmd_sites(args: argparse.Namespace) -> int:
     sites = all_sites()
     if args.json:
-        _emit_json(
+        emit_json(
             {
                 "sites": [
                     {
@@ -531,7 +489,7 @@ def cmd_sites(args: argparse.Namespace) -> int:
     table.add_column("主页", style="dim")
     for s in sites:
         table.add_row(s.crawler_id, s.name, " / ".join(s.aliases or []), s.base_url)
-    _console().print(table)
+    make_console().print(table)
     return EXIT_OK
 
 
@@ -608,9 +566,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "summary": {"fetch": fetch, "skip": skip},
     }
     if args.json:
-        _emit_json(result)
+        emit_json(result)
     else:
-        console = _console()
+        console = make_console()
         console.print(
             f"站点：{site_names}\n"
             f"日期：{result['start_date']} ~ {result['end_date']}\n"
@@ -666,9 +624,9 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     console = (
         None
         if args.quiet
-        else _console(stderr=True, no_color=args.json, highlight=False)
+        else make_console(stderr=True, no_color=args.json, highlight=False)
     )
-    progress = _Progress(console)
+    progress = Progress(console)
 
     if console is not None:
         names = "、".join(s.name for s in sites) or "（无）"
@@ -742,9 +700,9 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         "warnings": progress.warnings,
     }
     if args.json:
-        _emit_json(result)
+        emit_json(result)
     else:
-        out = _console()
+        out = make_console()
         out.print(f"完成 · {stats}")
         out.print(f"输出目录：{output_dir}")
         if progress.files:
@@ -784,10 +742,10 @@ def cmd_runs(args: argparse.Namespace) -> int:
         "history": store.history,
     }
     if args.json:
-        _emit_json(result)
+        emit_json(result)
         return EXIT_OK
 
-    console = _console()
+    console = make_console()
     if last is None:
         console.print(f"暂无运行记录（账本：{store.path}）")
         return EXIT_OK
@@ -873,44 +831,9 @@ def _run_subcommand(argv: list[str]) -> int:
     return args.func(args)
 
 
-def _console(*, stderr: bool = False, **kwargs) -> Console:
-    """Console for CLI output, safe when stdout/stderr is a pipe or a file.
-
-    Args:
-        stderr: write to stderr instead of stdout.
-        kwargs: forwarded to :class:`rich.console.Console`.
-
-    Note:
-        ``legacy_windows`` is disabled for non-terminals on purpose: rich's legacy
-        Windows renderer writes through the console handle, which raises OSError
-        instead of printing when the output has been redirected. ``markup=False``
-        because CLI text embeds site keys and paths inside square brackets.
-    """
-    stream = sys.stderr if stderr else sys.stdout
-    return Console(
-        stderr=stderr,
-        markup=False,
-        legacy_windows=None if stream.isatty() else False,
-        **kwargs,
-    )
-
-
-def _force_utf8_output() -> None:
-    """Make stdout/stderr UTF-8 when the system picked a legacy locale.
-
-    Windows defaults redirected output to the OEM/ANSI code page (cp936, cp1252, ...);
-    every command prints Chinese immediately, so without this the first line dies with
-    UnicodeEncodeError on any non-Chinese locale.
-    """
-    for stream in (sys.stdout, sys.stderr):
-        encoding = (getattr(stream, "encoding", None) or "").lower()
-        if encoding not in ("utf-8", "utf8") and hasattr(stream, "reconfigure"):
-            stream.reconfigure(encoding="utf-8", errors="replace")
-
-
 def main(argv: list[str] | None = None) -> int:
     """Single entry point: TUI when invoked with no args on a TTY, else subcommands."""
-    _force_utf8_output()
+    force_utf8_output()
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv and sys.stdin.isatty() and sys.stdout.isatty():
         from . import tui

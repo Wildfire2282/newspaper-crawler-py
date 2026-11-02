@@ -31,12 +31,13 @@ def fetch_texts(
     http: HttpSession,
     urls: list[str],
     silent_404: bool,
-    max_workers: int = 8,
+    max_workers: Optional[int] = None,
     cache: Optional[dict[str, str]] = None,
 ) -> list[Optional[str]]:
     """Fetch pages concurrently and return results positionally aligned with urls.
 
     Args:
+        max_workers: overrides ``http.concurrency``, the session's per-host budget.
         cache: optional url -> body map. URLs already present are not requested;
             successful fetches are written back. Lets callers avoid re-requesting a
             page already retrieved for an earlier purpose (e.g. layout page 1 read
@@ -52,7 +53,8 @@ def fetch_texts(
         cache = {}
     pending = list(dict.fromkeys(u for u in urls if u not in cache))
     if pending:
-        with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as pool:
+        workers = max_workers if max_workers is not None else http.concurrency
+        with ThreadPoolExecutor(max_workers=min(workers, len(pending))) as pool:
             fetched = pool.map(
                 lambda u: http.get_text(u, silent_404=silent_404), pending
             )

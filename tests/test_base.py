@@ -15,6 +15,8 @@ class _FakeHttp:
     Returns pages by URL (missing URL -> None) and records every requested URL.
     """
 
+    concurrency = 8  # fetch_texts reads the per-host budget from the session
+
     def __init__(self, pages: dict[str, str]):
         self.pages = pages
         self.calls: list[str] = []
@@ -86,6 +88,8 @@ def test_fetch_texts_dedupes_duplicate_urls():
     calls: list[str] = []
 
     class _CountingHttp:
+        concurrency = 8
+
         def get_text(self, url, silent_404=False):
             calls.append(url)
             return "X"
@@ -168,3 +172,36 @@ def test_crawl_day_serial_sleeps_between_articles(monkeypatch):
     BaseCrawler.crawl_day(site, object(), D, max_workers=1, article_delay=(0.1, 0.2))
 
     assert len(slept) == 2  # one delay per article in serial mode
+
+
+def test_fetch_texts_respects_the_session_budget():
+    """The per-host concurrency budget comes from the session, not a hardcoded number."""
+    import threading
+    import time
+
+    class _BudgetHttp:
+        def __init__(self, concurrency: int):
+            self.concurrency = concurrency
+            self.active = 0
+            self.peak = 0
+            self._lock = threading.Lock()
+
+        def get_text(self, url, silent_404=False):
+            with self._lock:
+                self.active += 1
+                self.peak = max(self.peak, self.active)
+            time.sleep(0.01)
+            with self._lock:
+                self.active -= 1
+            return url
+
+    http = _BudgetHttp(concurrency=3)
+    urls = [f"u{i}" for i in range(12)]
+
+    assert fetch_texts(http, urls, silent_404=True) == urls
+    assert http.peak <= 3
+
+    # An explicit override still wins over the session budget.
+    http = _BudgetHttp(concurrency=8)
+    assert fetch_texts(http, urls, silent_404=True, max_workers=1) == urls
+    assert http.peak == 1

@@ -89,7 +89,7 @@ def run_site(
     site_name = site.name
     site_key = site.crawler_id
     formatter = Formatter(site.name, site.base_url)
-    http = HttpSession()
+    http = HttpSession(concurrency=opts.max_workers)
 
     def emit(kind: str, **fields) -> None:
         on_event(ProgressEvent(kind=kind, site=site_name, **fields))

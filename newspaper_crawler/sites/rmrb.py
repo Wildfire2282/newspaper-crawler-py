@@ -119,7 +119,7 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
     # so serve it from the cache rather than requesting it twice.
     cache: dict[str, str] = {url1: html}
     urls = [_new_layout_url(d, num) for num, _ in edition_refs]
-    bodies = fetch_texts(http, urls, silent_404=False, max_workers=16, cache=cache)
+    bodies = fetch_texts(http, urls, silent_404=False, cache=cache)
     results = [
         (num, name, body)
         for (num, name), body in zip(edition_refs, bodies)
@@ -165,7 +165,7 @@ def _get_old_editions(http: HttpSession, d: date) -> list[Edition]:
         pages = list(range(2, MAX_PAGES + 1))
 
     urls = [_old_layout_url(d, p) for p in pages]
-    bodies = fetch_texts(http, urls, silent_404=True, max_workers=16)
+    bodies = fetch_texts(http, urls, silent_404=True)
     for p, body in zip(pages, bodies):
         if body is None:
             continue

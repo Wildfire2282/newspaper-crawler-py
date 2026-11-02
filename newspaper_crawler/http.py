@@ -22,6 +22,9 @@ DEFAULT_MAX_RETRIES = 3
 # shortcut: a chunked response without that header is read whole, unbounded; stream
 # and count the bytes here if untrusted hosts are ever added.
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+# Requests one host may see from us at once. Callers that fan out (fetch_texts) read
+# this budget from the session, so ``--workers`` is the single concurrency knob.
+DEFAULT_CONCURRENCY = 8
 # Pool sized to the maximum concurrency in use: an undersized pool discards and
 # re-handshakes connections under load (slower for us, costlier for the server).
 DEFAULT_POOL_CONNECTIONS = 8
@@ -43,8 +46,9 @@ class HttpSession:
     Threading: safe to share across worker threads. After construction the session
     mutates no per-request state (one static User-Agent header, no cookies), which is
     what makes concurrent ``Session.get`` calls safe here; urllib3's pool is
-    thread-safe. This class imposes no request pacing, so per-host request rate is
-    bounded solely by the caller's worker count.
+    thread-safe. This class imposes no request pacing: per-host concurrency is bounded
+    by ``concurrency``, the budget fan-out callers use (see ``fetch_texts``) and the
+    size the connection pool is kept at.
     """
 
     def __init__(
@@ -54,10 +58,13 @@ class HttpSession:
         user_agent: str = DEFAULT_USER_AGENT,
         pool_maxsize: int = DEFAULT_POOL_MAXSIZE,
         max_bytes: int = DEFAULT_MAX_BYTES,
+        concurrency: int = DEFAULT_CONCURRENCY,
     ):
         self.timeout = timeout
         self.max_retries = max_retries
-        self.pool_maxsize = pool_maxsize
+        # Budget for callers that request several pages at once; also the pool floor.
+        self.concurrency = max(1, concurrency)
+        self.pool_maxsize = max(pool_maxsize, self.concurrency)
         self.max_bytes = max_bytes
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent})

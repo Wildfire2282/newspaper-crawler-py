@@ -147,3 +147,17 @@ def test_decode_falls_back_to_apparent_encoding():
     # so decoding must fall through to apparent_encoding.
     resp = _Resp(200, b"\xff\xff", apparent_encoding="latin-1")
     assert _decode(resp) == "ÿÿ"
+
+
+def test_pool_is_at_least_as_large_as_the_concurrency_budget():
+    """An undersized pool would discard and re-handshake connections under load."""
+    http = HttpSession(concurrency=30)
+    adapter = http.session.get_adapter("http://example.com")
+    assert http.concurrency == 30
+    assert adapter._pool_maxsize == 30
+    http.close()
+
+    # The explicit pool size still wins when it is the larger of the two.
+    http = HttpSession(concurrency=4, pool_maxsize=24)
+    assert http.session.get_adapter("http://example.com")._pool_maxsize == 24
+    http.close()

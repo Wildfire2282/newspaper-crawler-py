@@ -12,8 +12,6 @@ from newspaper_crawler.cli import (
     EXIT_ERROR,
     EXIT_OK,
     EXIT_USAGE,
-    _console,
-    _Progress,
     _resolve_output_dir,
     _resolve_sites,
     build_parser,
@@ -21,6 +19,7 @@ from newspaper_crawler.cli import (
     main,
 )
 from newspaper_crawler.models import CrawlStats
+from newspaper_crawler.output import Progress, make_console
 from newspaper_crawler.scheduler import ProgressEvent
 from newspaper_crawler.state import DONE, FAILED, SKIPPED, StateStore
 
@@ -268,7 +267,7 @@ def test_help_examples_are_runnable_commands(capsys):
 
 def test_progress_collects_files_skipped_and_errors():
     done_path, skip_path = Path("/out/a.md"), Path("/out/b.md")
-    progress = _Progress(None)
+    progress = Progress(None)
     progress(
         ProgressEvent(kind="day_done", site="人民日报", path=done_path, message="m")
     )
@@ -292,7 +291,7 @@ def test_progress_collects_files_skipped_and_errors():
 
 
 def test_progress_collects_warnings_separately_from_errors():
-    progress = _Progress(None)
+    progress = Progress(None)
     progress(
         ProgressEvent(
             kind="log",
@@ -667,7 +666,7 @@ def test_runs_survives_a_ledger_with_an_unknown_status(tmp_path, capsys):
 
 def test_progress_keeps_bracketed_site_keys(capsys):
     """The progress renderer must not treat "[gone]" as rich markup and drop it."""
-    progress = _Progress(_console(stderr=True))
+    progress = Progress(make_console(stderr=True))
     progress(
         ProgressEvent(
             kind="log", level="warn", site="gone", message="[gone] 未找到站点，已跳过"
@@ -719,7 +718,7 @@ def test_console_never_assumes_a_win32_console_when_redirected(monkeypatch):
 
     monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="utf-8"))
 
-    assert _console().legacy_windows is False
+    assert make_console().legacy_windows is False
 
 
 def test_plan_txt_reports_txt_paths(tmp_path, capsys):

@@ -22,6 +22,9 @@ D2 = date(2026, 9, 11)
 
 
 class _DummyHttp:
+    def __init__(self, **kwargs) -> None:  # run_site passes the concurrency budget
+        pass
+
     def close(self) -> None:
         pass
 
