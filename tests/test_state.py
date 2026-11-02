@@ -4,6 +4,8 @@ import json
 from datetime import date, timedelta
 from pathlib import Path
 
+import pytest
+
 from newspaper_crawler.state import (
     DONE,
     EMPTY,
@@ -296,3 +298,30 @@ def test_unknown_output_format_falls_back_to_md(tmp_path):
     # The value is fed to argparse as a default, which is not validated against
     # choices, so it must be sanitized here.
     assert StateStore(tmp_path).preferences.output_format == "md"
+
+
+@pytest.mark.parametrize("days", [{"a": 1}, ["oops"], "abc", 0])
+def test_malformed_ledger_days_do_not_abort_loading(tmp_path, days):
+    """A foreign or hand-edited file must not raise from the constructor."""
+    (tmp_path / STATE_FILENAME).write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "last_run": {
+                    "run_id": "x",
+                    "started_at": "",
+                    "output_dir": "",
+                    "format": "md",
+                    "days": days,
+                    "stats": {},
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    store = StateStore(tmp_path)
+
+    assert store.last_run is not None
+    assert store.last_run.days == []
+    assert store.open_days() == []

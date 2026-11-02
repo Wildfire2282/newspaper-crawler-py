@@ -355,17 +355,17 @@ def _offer_resume(state: dict, store: StateStore) -> bool:
     open_days = store.open_days()
     if not open_days:
         return False
+    # Resolve first: it reports unusable sites and tells us how many days are left.
+    planned = _resume_options(open_days, store)
+    if planned is None:  # Nothing in the ledger can be resumed.
+        return False
+    site_keys, opts, days_by_site, days = planned
     if not confirm(
-        f"发现上次未完成的 {len(open_days)} 天，继续这些日期？"
+        f"发现上次未完成的 {len(days)} 天，继续这些日期？"
         "（否=按当前设置开始新任务）",
         default=True,
     ):
         return False
-
-    planned = _resume_options(open_days, store)
-    if planned is None:  # Nothing in the ledger can be resumed.
-        return True
-    site_keys, opts, days_by_site, days = planned
     run_crawl(store, site_keys, opts, days_by_site=days_by_site, days=days)
     return True
 

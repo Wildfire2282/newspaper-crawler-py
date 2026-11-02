@@ -156,6 +156,10 @@ class RunRecord:
     def from_dict(cls, raw: dict) -> "RunRecord":
         days: list[DayRecord] = []
         for item in raw.get("days") or []:
+            if not isinstance(item, dict):
+                # A hand-edited or foreign file may hold anything here; a ledger entry
+                # it cannot describe must not abort loading the rest.
+                continue
             try:
                 days.append(DayRecord.from_dict(item))
             except ValueError:  # Unparsable date: drop the entry, keep the rest.

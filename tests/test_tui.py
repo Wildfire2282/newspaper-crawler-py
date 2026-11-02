@@ -314,3 +314,43 @@ def test_resuming_a_ledger_with_a_vanished_site_clears_it(tmp_path, monkeypatch)
     reloaded = StateStore(tmp_path)
     assert [d.site for d in reloaded.last_run.days] == ["rmrb"]  # gone is not rewritten
     assert reloaded.open_days() == []  # so the next resume is not blocked
+
+
+def test_resume_offer_counts_only_resumable_days(tmp_path, monkeypatch):
+    store = StateStore(tmp_path)
+    store.start_run(["gone", "rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+    store.record_day("gone", date(2026, 9, 1), FAILED)
+    store.record_day("rmrb", date(2026, 9, 1), FAILED)
+
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        tui, "confirm", lambda prompt, **k: prompts.append(prompt) or False
+    )
+    monkeypatch.setattr(tui, "run_multi", lambda *a, **k: CrawlStats())
+
+    tui.start_download(tui.default_state(), store)
+
+    assert prompts[0].startswith("发现上次未完成的 1 天")  # not 2: one site vanished
+
+
+def test_resume_offer_falls_back_to_a_fresh_run_when_nothing_is_resumable(
+    tmp_path, monkeypatch
+):
+    store = StateStore(tmp_path)
+    store.start_run(["gone"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+    store.record_day("gone", date(2026, 9, 1), FAILED)
+
+    prompts: list[str] = []
+    monkeypatch.setattr(
+        tui, "confirm", lambda prompt, **k: prompts.append(prompt) or True
+    )
+    ran: list[list[str]] = []
+    monkeypatch.setattr(
+        tui, "run_multi", lambda keys, opts, **k: ran.append(keys) or CrawlStats()
+    )
+
+    tui.start_download(tui.default_state(), store)
+
+    # Not a dead end: the user gets the normal fresh-run flow instead of the menu.
+    assert prompts == ["确认开始下载？"]
+    assert ran == [["rmrb", "gmrb", "dzrb", "jjrb"]]
