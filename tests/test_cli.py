@@ -244,7 +244,7 @@ def test_subcommand_help_documents_params_and_json_fields(capsys):
         assert token in crawl, f"crawl 帮助缺少: {token}"
 
     plan = _help(capsys, ["plan", "--help"])
-    for token in ["--sites", "days", "summary"]:
+    for token in ["--sites", "days", "summary", "退出码 1"]:
         assert token in plan, f"plan 帮助缺少: {token}"
 
     sites = _help(capsys, ["sites", "--help"])

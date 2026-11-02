@@ -363,26 +363,33 @@ def _offer_resume(state: dict, store: StateStore) -> bool:
         return False
 
     planned = _resume_options(open_days, store)
-    if planned is None:  # The ledger references sites that no longer exist.
+    if planned is None:  # Nothing in the ledger can be resumed.
         return True
-    site_keys, opts, days_by_site = planned
-    run_crawl(store, site_keys, opts, days_by_site=days_by_site)
+    site_keys, opts, days_by_site, days = planned
+    run_crawl(store, site_keys, opts, days_by_site=days_by_site, days=days)
     return True
 
 
 def _resume_options(open_days, store: StateStore):
-    """Build the crawl options for the ledger's open days, or None when unusable."""
+    """Build the crawl plan for the ledger's open days, or None when unusable.
+
+    Days whose site no longer resolves are dropped (and reported): keeping them would
+    rebuild the same unusable ledger and block every later resume. This mirrors the
+    CLI's ``crawl --resume``.
+    """
     planned = resume_plan(store)
     if planned is None:
         return None
     _, output_dir, fmt_name = planned
-    keys = sorted({d.site for d in open_days})
-    missing = [k for k in keys if lookup(k) is None]
+    usable = [d for d in open_days if lookup(d.site) is not None]
+    missing = sorted({d.site for d in open_days if lookup(d.site) is None})
     if missing:
-        console.print(f"[red]账本中的站点已不可用：{escape('、'.join(missing))}[/red]")
+        console.print(f"[red]账本中的站点已不可用，已跳过：{escape('、'.join(missing))}[/red]")
+    if not usable:
         return None
+    keys = sorted({d.site for d in usable})
     fmt = OutputFormat.TXT if fmt_name == "txt" else OutputFormat.MD
-    dates = [d.date for d in open_days]
+    dates = [d.date for d in usable]
     opts = make_crawl_options(
         start=min(dates),
         end=max(dates),
@@ -392,7 +399,7 @@ def _resume_options(open_days, store: StateStore):
         fast=store.preferences.fast_mode,
         skip_existing=store.preferences.skip_existing,
     )
-    return keys, opts, resume_days(open_days)
+    return keys, opts, resume_days(usable), usable
 
 
 def run_crawl(
@@ -400,11 +407,12 @@ def run_crawl(
     site_keys: list[str],
     opts,
     days_by_site=None,
+    days=None,
 ) -> None:
     """Run one crawl, keeping the ledger in sync for the duration.
 
-    ``days_by_site`` marks a resume: the ledger is rebuilt around exactly those
-    (site, date) entries, so completing or failing them closes them out.
+    ``days_by_site`` marks a resume: the ledger is rebuilt around ``days`` (the entries
+    still resumable), so completing or failing them closes them out.
     """
     if store is not None:
         store.start_run(
@@ -413,7 +421,7 @@ def run_crawl(
             opts.end_date,
             opts.output_dir,
             opts.output_format.ext(),
-            days=store.open_days() if days_by_site else None,
+            days=days,
         )
 
     console.rule("[bold cyan]开始下载[/bold cyan]")

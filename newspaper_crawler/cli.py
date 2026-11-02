@@ -190,7 +190,7 @@ _PLAN_EPILOG = """\
   crawler plan --resume --json                  # 只预演上次未完成的日期
 
 --resume:
-  只处理上次运行中仍为 pending（中断）或 failed（失败）的日期；无账本时为用法错误。
+  只处理上次运行中仍为 pending（中断）或 failed（失败）的日期；无账本时报错退出（退出码 1）。
   续传按账本执行，--sites/--start/--end/-o/-f 一律忽略（用账本记录的值）。
 
 --json 输出字段:
