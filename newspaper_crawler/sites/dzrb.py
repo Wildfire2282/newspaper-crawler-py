@@ -97,11 +97,6 @@ def _fetch_article(http: HttpSession, r: ArticleRef, d: date) -> Optional[Articl
             if t:
                 paragraphs.append(t)
 
-    # Fallback: the non-empty text of every <p> on the page.
-    if not paragraphs:
-        paragraphs = [p.get_text().strip() for p in doc.find_all("p")]
-        paragraphs = [s for s in paragraphs if s]
-
     return Article(
         title=title,
         yinti=yinti,

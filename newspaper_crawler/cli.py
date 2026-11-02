@@ -655,7 +655,9 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         keys = sorted({d.site for d in open_days})
         sites = [s for s in (lookup(k) for k in keys) if s is not None]
         dates = [d.date for d in open_days]
-        unknown: list[str] = []
+        # A ledger written by an older version may name a site that no longer exists:
+        # report it instead of exiting 0 having crawled nothing.
+        unknown = [k for k in keys if lookup(k) is None]
         start, end = min(dates), max(dates)
         fmt = _output_format(fmt_name)
     else:
@@ -707,14 +709,20 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         days_by_site = None
 
     started = time.monotonic()
-    stats = run_multi(
-        keys,
-        opts,
-        on_event=progress,
-        max_site_workers=site_workers,
-        on_day=store.day_hook(),
-        days_by_site=days_by_site,
-    )
+    try:
+        stats = run_multi(
+            keys,
+            opts,
+            on_event=progress,
+            max_site_workers=site_workers,
+            on_day=store.day_hook(),
+            days_by_site=days_by_site,
+        )
+    except KeyboardInterrupt:
+        # Close the run like the interactive menu does, so ``runs`` still shows the
+        # interrupted run; the unfinished days stay pending in the ledger.
+        store.finish_run({})
+        raise
     elapsed = time.monotonic() - started
 
     store.finish_run(stats.as_dict())

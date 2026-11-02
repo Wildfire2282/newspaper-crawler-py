@@ -195,10 +195,26 @@ def test_start_download_skips_the_resume_prompt_when_nothing_is_open(tmp_path, m
     store.record_day("rmrb", date(2026, 9, 1), SKIPPED)
 
     prompts: list[str] = []
+    ran: list[list[str]] = []
     monkeypatch.setattr(tui, "ask", lambda *a, **k: "7")
     monkeypatch.setattr(tui, "confirm", lambda *a, **k: prompts.append(a[0]) or True)
+    # Without this fake the test would crawl the real newspapers for the last 7 days.
+    monkeypatch.setattr(
+        tui,
+        "run_multi",
+        lambda keys, opts, **kw: ran.append(keys) or CrawlStats(),
+    )
 
     tui.start_download(tui.default_state(), store)
 
     assert prompts == ["确认开始下载？"]  # no resume offer
+    assert len(ran) == 1  # proceeded to a fresh run instead
 
+
+
+def test_resume_options_rejects_a_ledger_with_vanished_sites(tmp_path, capsys):
+    store = StateStore(tmp_path)
+    store.start_run(["gone"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+
+    assert tui._resume_options(store.open_days(), store) is None
+    assert "已不可用" in capsys.readouterr().out

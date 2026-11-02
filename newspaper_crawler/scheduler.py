@@ -102,7 +102,8 @@ def run_site(
         if on_day is not None:
             on_day(site_key, day, status, path, error)
 
-    def crawl_one_day(current: date) -> None:
+    def crawl_one_day(current: date) -> bool:
+        """Crawl one day; True when the network was used (i.e. not a skipped file)."""
         weekday = weekday_cn(current)
         filepath = site.day_filepath(current, opts.output_dir, opts.output_format.ext())
 
@@ -116,7 +117,7 @@ def run_site(
                 path=filepath,
                 message=f"[{site_name}] {current}({weekday}) 跳过（文件已存在）",
             )
-            return
+            return False
 
         emit(
             "day_start",
@@ -148,7 +149,7 @@ def run_site(
                     f"（索引页结构疑似已变化：{exc}）"
                 ),
             )
-            return
+            return True
         except Exception as exc:  # Edition-fetch failure; other days continue.
             log.error("抓取 %s %s 失败: %s", site_name, current, exc)
             stats.days_attempted += 1
@@ -159,7 +160,7 @@ def run_site(
                 date=current,
                 message=f"[{site_name}] {current} 抓取失败: {exc}",
             )
-            return
+            return True
 
         if not editions:
             stats.days_attempted += 1
@@ -171,7 +172,7 @@ def run_site(
                 weekday=weekday,
                 message=f"[{site_name}] {current}({weekday}) 无报纸",
             )
-            return
+            return True
 
         total_editions = len(editions)
         total_articles = count_full(editions)
@@ -192,7 +193,7 @@ def run_site(
                 date=current,
                 message=f"[{site_name}] {current} 写入失败: {exc}",
             )
-            return
+            return True
 
         stats.days_attempted += 1
         stats.days_success += 1
@@ -214,6 +215,7 @@ def run_site(
                 f"{total_editions} 版 {total_articles} 篇{extra}"
             ),
         )
+        return True
 
     emit("site_start", message=f"[{site_name}] 任务开始")
     try:
@@ -221,10 +223,13 @@ def run_site(
         while current <= opts.end_date:
             if stop is not None and stop.is_set():
                 break
+            hit_network = False
             if days is None or current.isoformat() in days:
-                crawl_one_day(current)
+                hit_network = crawl_one_day(current)
             current += timedelta(days=1)
-            if current <= opts.end_date and opts.day_delay > 0:
+            # Only pace days that actually talked to the server: a range where most
+            # files already exist must not spend day_delay per skipped day.
+            if hit_network and current <= opts.end_date and opts.day_delay > 0:
                 time.sleep(opts.day_delay)
     finally:
         http.close()

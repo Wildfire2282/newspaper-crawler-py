@@ -6,6 +6,7 @@ from typing import Optional
 import pytest
 
 from newspaper_crawler.base import EmptyIndexError
+from newspaper_crawler.models import ArticleRef
 from newspaper_crawler.sites import dzrb, gmrb, jjrb, rmrb
 
 
@@ -532,3 +533,22 @@ def test_gmrb_new_edition_name_drops_the_number_prefix():
     editions = gmrb.GuangmingCrawler().get_editions(http, d)
 
     assert editions[0].name == "头版"
+
+
+def test_dzrb_article_without_contenttext_has_no_body():
+    """Page furniture must not be mistaken for body text on an unknown template."""
+    d = date(2026, 9, 10)
+    article = f"{dzrb.BASE_URL}/content/20260910/content_2.htm"
+    http = _FakeHttp(
+        {
+            article: '<h1 class="biaoti">图片报道</h1>'
+            '<div id="nav"><p>首页</p><p>版权声明</p></div>'
+        }
+    )
+
+    art = dzrb.DazhongCrawler().fetch_article(
+        http, ArticleRef(title="图片报道", url=article), d
+    )
+
+    assert art is not None
+    assert art.paragraphs == []

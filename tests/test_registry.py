@@ -34,3 +34,10 @@ def test_lookup_by_id_name_alias(key, expected_id):
 @pytest.mark.parametrize("key", ["nope", "不存在", ""])
 def test_lookup_unknown_returns_none(key):
     assert lookup(key) is None
+
+
+def test_lookup_accepts_prefix_and_substring():
+    """Documented match order: exact, then prefix, then substring."""
+    assert lookup("人").crawler_id == "rmrb"  # prefix
+    assert lookup("光").crawler_id == "gmrb"
+    assert lookup("民日报").crawler_id == "rmrb"  # substring

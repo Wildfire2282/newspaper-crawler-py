@@ -431,3 +431,23 @@ def test_run_multi_groups_the_allow_list_per_site(tmp_path, no_network, monkeypa
         ("b", D1),
         ("b", D2),
     ]
+
+
+def test_run_site_does_not_pace_days_that_were_skipped(tmp_path, no_network, monkeypatch):
+    """A range whose files already exist must not spend day_delay per skipped day."""
+    slept = []
+    monkeypatch.setattr(scheduler.time, "sleep", slept.append)
+
+    site = _Site(_one_edition)
+    done = site.day_filepath(D1, tmp_path, "md")
+    done.parent.mkdir(parents=True)
+    done.write_text("旧内容", encoding="utf-8")
+
+    run_site(
+        site,
+        _opts(tmp_path, start=D1, end=date(2026, 9, 12), day_delay=0.5),
+        lambda ev: None,
+    )
+
+    # D1 skipped without a request; only D2 deserves the pacing delay.
+    assert slept == [0.5]

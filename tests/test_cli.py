@@ -408,6 +408,11 @@ def _record_run(
 
 
 def test_crawl_remembers_the_settings_it_used(tmp_path, monkeypatch, capsys):
+    # No network: a real crawl here would make the suite slow and site-dependent.
+    monkeypatch.setattr(
+        "newspaper_crawler.cli.run_multi",
+        lambda keys, opts, **kwargs: CrawlStats(days_attempted=1, days_success=1),
+    )
     code = main(
         [
             "crawl",
@@ -582,3 +587,54 @@ def test_runs_table_output_lists_sites_and_status(tmp_path, capsys):
     assert "最近一次运行" in out
     assert "人民日报" in out  # stored ids are rendered as display names
     assert "跳过 1" in out
+
+
+def test_crawl_resume_reports_ledger_sites_that_no_longer_exist(tmp_path, monkeypatch, capsys):
+    """A ledger naming an unknown site must fail loudly, not exit 0 having crawled 0."""
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("gone",))
+    store.record_day("gone", date(2026, 9, 1), FAILED)  # leaves a day to resume
+
+    seen: list[list[str]] = []
+
+    def fake_run_multi(keys, opts, on_event, max_site_workers=4, on_day=None, **kw):
+        seen.append(keys)
+        return CrawlStats()
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", fake_run_multi)
+    assert main(["crawl", "--resume", "--json", "--quiet"]) == EXIT_ERROR
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["unknown_sites"] == ["gone"]
+    assert payload["ok"] is False
+    assert seen == [["gone"]]
+
+
+def test_crawl_interrupt_still_closes_the_ledger(tmp_path, monkeypatch, capsys):
+    def interrupted(keys, opts, on_event, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", interrupted)
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-01",
+            "-o",
+            str(tmp_path),
+            "--json",
+            "--quiet",
+        ]
+    )
+    capsys.readouterr()
+
+    assert code == 130
+    store = StateStore()
+    assert store.last_run is not None
+    assert store.last_run.stats == {}
+    assert store.history[0]["run_id"] == store.last_run.run_id
+    assert [d.status for d in store.open_days()] == ["pending"]  # still resumable
