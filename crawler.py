@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """Newspaper downloader entry script.
 
 Usage (the authoritative reference is ``--help``, not this docstring):

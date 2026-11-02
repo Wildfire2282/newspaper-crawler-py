@@ -638,3 +638,15 @@ def test_crawl_interrupt_still_closes_the_ledger(tmp_path, monkeypatch, capsys):
     assert store.last_run.stats == {}
     assert store.history[0]["run_id"] == store.last_run.run_id
     assert [d.status for d in store.open_days()] == ["pending"]  # still resumable
+
+
+def test_runs_survives_a_ledger_with_an_unknown_status(tmp_path, capsys):
+    store = StateStore()
+    _record_run(store, tmp_path)
+    raw = json.loads(store.path.read_text(encoding="utf-8"))
+    raw["last_run"]["days"][0]["status"] = "running"  # e.g. hand-edited
+    store.path.write_text(json.dumps(raw), encoding="utf-8")
+
+    assert main(["runs"]) == EXIT_OK
+    out = capsys.readouterr().out
+    assert "running 1" in out  # shown verbatim instead of raising KeyError

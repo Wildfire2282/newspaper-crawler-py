@@ -226,12 +226,14 @@ class Preferences:
         workers = _int(raw.get("max_workers"), base.max_workers)
         site_workers = _int(raw.get("site_workers"), base.site_workers)
         keys = raw.get("site_keys")
+        fmt = _str(raw.get("output_format"), base.output_format)
         return cls(
             site_keys=[str(k) for k in keys] if isinstance(keys, list) else [],
             start_date=start,
             end_date=end,
             output_dir=path.as_posix(),
-            output_format=_str(raw.get("output_format"), base.output_format),
+            # The value becomes an argparse default, so it must be a real choice.
+            output_format=fmt if fmt in ("md", "txt") else base.output_format,
             max_workers=max(1, workers),
             fast_mode=_bool(raw.get("fast_mode"), base.fast_mode),
             skip_existing=_bool(raw.get("skip_existing"), base.skip_existing),
@@ -266,6 +268,11 @@ class StateStore:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
             if not isinstance(raw, dict):
                 raise ValueError("顶层不是对象")
+            version = raw.get("version", STATE_VERSION)
+            if version != STATE_VERSION:
+                # Parsing an unknown layout as v1 and then rewriting it in v1 shape
+                # would silently drop whatever that other version stored.
+                raise ValueError(f"状态文件版本 {version!r} 不受支持")
             prefs = raw.get("preferences")
             if isinstance(prefs, dict):
                 self.preferences = Preferences.from_dict(prefs, self.cwd)

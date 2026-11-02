@@ -12,7 +12,7 @@ def test_atomic_write_creates_parents_and_file(tmp_path):
     target = tmp_path / "a" / "b" / "2026-09-10.md"
     atomic_write(target, "内容")
     assert target.read_text(encoding="utf-8") == "内容"
-    assert not (target.parent / "2026-09-10.md.tmp").exists()
+    assert list(target.parent.glob("*.tmp")) == []
 
 
 def test_atomic_write_overwrites_existing(tmp_path):
@@ -38,8 +38,10 @@ def test_atomic_write_cleans_tmp_and_reraises_when_replace_fails(tmp_path, monke
         atomic_write(target, "data")
 
     assert len(calls) == 3  # exactly 3 attempts before giving up
-    assert not (tmp_path / "x.md.tmp").exists()
+    assert list(tmp_path.glob("*.tmp")) == []
     assert not target.exists()
+    # The temp name is per process, so two concurrent runs cannot interleave into it.
+    assert calls[0][0].name == f"x.md.{storage.os.getpid()}.tmp"
 
 
 def test_atomic_write_cleans_tmp_when_write_fails(tmp_path, monkeypatch):
@@ -53,5 +55,5 @@ def test_atomic_write_cleans_tmp_when_write_fails(tmp_path, monkeypatch):
     with pytest.raises(OSError):
         atomic_write(target, "data")
 
-    assert not (tmp_path / "x.md.tmp").exists()
+    assert list(tmp_path.glob("*.tmp")) == []
     assert not target.exists()

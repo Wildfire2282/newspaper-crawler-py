@@ -272,3 +272,27 @@ def test_preferences_default_dates_cover_the_last_seven_days():
     assert prefs.start_date == today - timedelta(days=6)
     assert not Path(prefs.output_dir).is_absolute()  # relative to the working dir
     assert prefs.output_dir == "downloads"
+
+
+def test_unknown_version_is_backed_up_instead_of_parsed(tmp_path):
+    """A newer/edited layout must not be read as v1 and rewritten in v1 shape."""
+    target = tmp_path / STATE_FILENAME
+    target.write_text(
+        json.dumps({"version": 2, "preferences": {"max_workers": 9}}), encoding="utf-8"
+    )
+
+    store = StateStore(tmp_path)
+
+    assert store.preferences == default_preferences()
+    assert (tmp_path / (STATE_FILENAME + ".bak")).exists()
+
+
+def test_unknown_output_format_falls_back_to_md(tmp_path):
+    (tmp_path / STATE_FILENAME).write_text(
+        json.dumps({"version": 1, "preferences": {"output_format": "pdf"}}),
+        encoding="utf-8",
+    )
+
+    # The value is fed to argparse as a default, which is not validated against
+    # choices, so it must be sanitized here.
+    assert StateStore(tmp_path).preferences.output_format == "md"

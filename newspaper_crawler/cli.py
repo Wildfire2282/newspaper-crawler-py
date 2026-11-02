@@ -193,8 +193,9 @@ _PLAN_EPILOG = """\
   只处理上次运行中仍为 pending（中断）或 failed（失败）的日期；无账本时为用法错误。
 
 --json 输出字段:
-  sites / unknown_sites / start_date / end_date / output_dir / format
-  days     [{site, date, path, exists, action}]，action 为 fetch 或 skip
+  sites / unknown_sites / start_date / end_date / output_dir / format / resumed
+  days     [{site, date, path, exists, status, action}]，action 为 fetch 或 skip；
+           status 为账本状态（pending/failed/done/skipped/empty），非续传时为 null
   summary  {"fetch": N, "skip": N}"""
 
 _CRAWL_EPILOG = """\
@@ -239,6 +240,7 @@ _RUNS_EPILOG = """\
 --json 输出字段:
   last_run    {run_id, started_at, output_dir, format, stats, summary}
   open_days   [{site, date, status, path, error}]，status 为 pending 或 failed
+  open_count  未完成条数（= len(open_days)）
   history     [{run_id, started_at, sites, summary}]，最近 20 条
   state_file  账本文件路径"""
 
@@ -812,7 +814,7 @@ def cmd_runs(args: argparse.Namespace) -> int:
     console.print(
         f"最近一次运行：{last.run_id}（{last.started_at}）\n"
         f"输出目录：{last.output_dir} · 格式：{last.fmt}\n"
-        + " · ".join(f"{_STATUS_CN[k]} {v}" for k, v in summary.items())
+        + " · ".join(f"{_STATUS_CN.get(k, k)} {v}" for k, v in summary.items())
     )
     if open_days:
         table = Table(title=f"未完成 {len(open_days)} 天", header_style="bold yellow")

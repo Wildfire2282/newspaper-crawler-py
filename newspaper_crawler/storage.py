@@ -22,7 +22,9 @@ def atomic_write(path: Path, content: str) -> None:
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    # Per-process temp name: two runs writing the same day must not interleave into
+    # one temp file and then publish a mixed document.
+    tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.tmp")
     try:
         tmp.write_text(content, encoding="utf-8")
     except OSError:

@@ -218,3 +218,52 @@ def test_resume_options_rejects_a_ledger_with_vanished_sites(tmp_path, capsys):
 
     assert tui._resume_options(store.open_days(), store) is None
     assert "已不可用" in capsys.readouterr().out
+
+
+def test_run_crawl_closes_the_ledger_on_interrupt(tmp_path, monkeypatch, capsys):
+    store = StateStore(tmp_path)
+    opts = tui.make_crawl_options(
+        start=date(2026, 9, 1),
+        end=date(2026, 9, 1),
+        output_dir=tmp_path,
+        workers=1,
+    )
+
+    def interrupted(keys, opts, on_event, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(tui, "run_multi", interrupted)
+    tui.run_crawl(store, ["rmrb"], opts)
+
+    assert "已中断" in capsys.readouterr().out
+    assert store.last_run is not None
+    assert store.last_run.stats == {}
+    assert store.history[0]["run_id"] == store.last_run.run_id
+    assert [d.status for d in store.open_days()] == ["pending"]
+
+
+def test_start_download_runs_fresh_when_the_resume_offer_is_declined(
+    tmp_path, monkeypatch
+):
+    store = StateStore(tmp_path)
+    store.start_run(["rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+    store.record_day("rmrb", date(2026, 9, 1), FAILED)
+
+    prompts: list[str] = []
+    answers = iter([False, True])  # decline the resume, accept the fresh run
+
+    def confirm(prompt, **kwargs):
+        prompts.append(prompt)
+        return next(answers)
+
+    ran: list[list[str]] = []
+    monkeypatch.setattr(tui, "confirm", confirm)
+    monkeypatch.setattr(
+        tui, "run_multi", lambda keys, opts, **kw: ran.append(keys) or CrawlStats()
+    )
+
+    tui.start_download(tui.default_state(), store)
+
+    assert prompts[0].startswith("发现上次未完成的 1 天")
+    assert prompts[-1] == "确认开始下载？"
+    assert ran == [["rmrb", "gmrb", "dzrb", "jjrb"]]  # a fresh run over all sites
