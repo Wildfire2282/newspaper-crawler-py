@@ -16,6 +16,8 @@ RE_SPACE = re.compile(r"\s+")
 
 SEPARATOR = "=" * 60
 DIVIDER = "  ----------------------------------------"
+FETCH_FAILED_MD = "> *（正文获取失败）*\n\n---\n\n"
+FETCH_FAILED_TXT = "  （正文获取失败）\n\n"
 
 
 class Formatter:
@@ -49,6 +51,11 @@ class Formatter:
                 if is_full(art):
                     for line in md_article(art):
                         out += line
+                else:
+                    # Keep the section (and its TOC anchor) even when the body could
+                    # not be fetched, so a failed article is visible, not silently lost.
+                    out += f"### {art_title(art) or '（无标题）'}\n\n"
+                    out += FETCH_FAILED_MD
         return out
 
     def _md_header(self, d: date, total_editions: int, total_articles: int) -> str:
@@ -97,6 +104,8 @@ class Formatter:
                 continue
             for art in ed.articles:
                 if not is_full(art):
+                    out += f"  ■ {art_title(art)}\n"
+                    out += FETCH_FAILED_TXT
                     continue
                 if art.yinti:
                     out += f"  [{art.yinti}]\n"

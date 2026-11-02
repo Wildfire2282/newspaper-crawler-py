@@ -10,7 +10,6 @@ Contract:
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import sys
 import time
@@ -124,10 +123,6 @@ def _set_download_defaults(prefs: Preferences) -> None:
         subparser.set_defaults(**values)
 
 
-class _HelpFormatter(argparse.RawDescriptionHelpFormatter):
-    """Preserve epilog line breaks and indentation (examples, field lists)."""
-
-
 def _add_help_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-h", "--help", action="help", help="显示帮助信息并退出")
 
@@ -147,7 +142,8 @@ def _subparser(sub, name: str, summary: str, epilog: str) -> argparse.ArgumentPa
         name,
         help=summary,
         epilog=epilog,
-        formatter_class=_HelpFormatter,
+        # Raw text keeps the epilog's line breaks and indentation (examples, fields).
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=False,
     )
     _add_help_flag(parser)
@@ -264,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="crawler",
         description="报刊下载器：下载人民日报/光明日报/经济日报/大众日报电子版",
         epilog=_MAIN_EPILOG,
-        formatter_class=_HelpFormatter,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=False,
     )
     _add_help_flag(parser)
@@ -321,9 +317,6 @@ def build_parser() -> argparse.ArgumentParser:
     p_crawl.add_argument("--json", action="store_true", help="以 JSON 输出结果")
     p_crawl.add_argument("-q", "--quiet", action="store_true", help="不输出进度")
     p_crawl.add_argument("-v", "--verbose", action="store_true", help="输出调试日志")
-    p_crawl.add_argument(
-        "-y", "--yes", action="store_true", help="兼容占位（非交互模式不会询问）"
-    )
     p_crawl.set_defaults(func=cmd_crawl)
 
     p_runs = _subparser(sub, "runs", "查看运行历史与未完成日期", _RUNS_EPILOG)
@@ -436,7 +429,7 @@ class _Settings:
         return [s.crawler_id for s in self.sites]
 
 
-def _resolve_settings(args: argparse.Namespace, store: StateStore) -> _Settings:
+def _resolve_settings(args: argparse.Namespace) -> _Settings:
     """Turn parsed arguments into concrete settings.
 
     The parser already folded the stored preferences into the defaults
@@ -483,21 +476,6 @@ def _update_preferences(
         skip_existing=skip_existing,
         site_workers=site_workers,
     )
-
-
-def _make_on_day(store: StateStore):
-    """Ledger hook for the scheduler: persist one day's outcome, never raise.
-
-    The scheduler runs this from several site threads; the store serializes its own
-    writes. A failure to persist must not abort a crawl that is otherwise working, so
-    errors are logged and swallowed.
-    """
-
-    def on_day(site, day, status, path, error) -> None:
-        with contextlib.suppress(OSError):
-            store.record_day(site, day, status, path=path, error=error)
-
-    return on_day
 
 
 class _Progress:
@@ -603,7 +581,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         start, end = min(d.date for d in open_days), max(d.date for d in open_days)
         site_names = "、".join(_site_name(k) for k in keys) or "（无）"
     else:
-        settings = _resolve_settings(args, store)
+        settings = _resolve_settings(args)
         keys, unknown = settings.keys, settings.unknown
         output_dir, fmt, start, end = (
             settings.output_dir,
@@ -681,7 +659,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         start, end = min(dates), max(dates)
         fmt = _output_format(fmt_name)
     else:
-        settings = _resolve_settings(args, store)
+        settings = _resolve_settings(args)
         sites, unknown = settings.sites, settings.unknown
         keys = settings.keys
         output_dir, fmt = settings.output_dir, settings.fmt
@@ -697,7 +675,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         skip_existing=args.skip_existing,
     )
     workers = opts.max_workers
-    site_workers = max(1, args.site_workers or store.preferences.site_workers)
+    site_workers = max(1, args.site_workers)
 
     console = (
         None
@@ -734,7 +712,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         opts,
         on_event=progress,
         max_site_workers=site_workers,
-        on_day=_make_on_day(store),
+        on_day=store.day_hook(),
         days_by_site=days_by_site,
     )
     elapsed = time.monotonic() - started
@@ -900,7 +878,7 @@ def _run_subcommand(argv: list[str]) -> int:
         )
         return EXIT_USAGE
     if hasattr(args, "start") and not args.resume:
-        settings = _resolve_settings(args, store)
+        settings = _resolve_settings(args)
         if settings.end < settings.start:
             print("错误：--end 不能早于 --start。", file=sys.stderr)
             return EXIT_USAGE

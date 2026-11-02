@@ -199,7 +199,7 @@ def test_run_multi_merges_stats_and_finishes(tmp_path, no_network, monkeypatch):
 
 
 def test_run_multi_continues_when_site_raises(tmp_path, monkeypatch):
-    def boom(site, opts, on_event):
+    def boom(site, opts, on_event, on_day=None, days=None, stop=None):
         raise RuntimeError("整体失败")
 
     monkeypatch.setattr(scheduler, "run_site", boom)
@@ -253,7 +253,7 @@ def test_run_multi_cancels_sites_that_never_started(tmp_path, monkeypatch):
     site_a = _Site(_one_edition, name="甲报")
     site_b = _Site(_one_edition, name="乙报")
 
-    def crawl(site, opts, on_event, on_day=None, days=None):
+    def crawl(site, opts, on_event, on_day=None, days=None, stop=None):
         if site is site_a:
             raise KeyboardInterrupt
         started.set()
@@ -268,6 +268,53 @@ def test_run_multi_cancels_sites_that_never_started(tmp_path, monkeypatch):
         run_multi(["a", "b"], _opts(tmp_path), lambda ev: None, max_site_workers=1)
 
     assert not started.is_set()
+
+
+def test_run_multi_sets_the_stop_flag_when_interrupted(tmp_path, monkeypatch):
+    """Ctrl+C must reach the sites already running, not just cancel the queued ones."""
+    site_a = _Site(_one_edition, name="甲报")
+    site_b = _Site(_one_edition, name="乙报")
+    running = threading.Event()
+    stopped = threading.Event()
+
+    def crawl_a(site, opts, on_event, on_day=None, days=None, stop=None):
+        running.wait(timeout=5)  # both sites must be in flight, as in a real run
+        raise KeyboardInterrupt
+
+    def crawl_b(site, opts, on_event, on_day=None, days=None, stop=None):
+        running.set()
+        if stop is not None and stop.wait(timeout=5):
+            stopped.set()
+        return CrawlStats()
+
+    monkeypatch.setattr(scheduler, "lookup", lambda k: site_a if k == "a" else site_b)
+    monkeypatch.setattr(
+        scheduler,
+        "run_site",
+        lambda site, *a, **kw: (crawl_a if site is site_a else crawl_b)(site, *a, **kw),
+    )
+
+    with pytest.raises(KeyboardInterrupt):
+        run_multi(["a", "b"], _opts(tmp_path), lambda ev: None, max_site_workers=2)
+
+    assert stopped.is_set()
+
+
+def test_run_site_finishes_the_current_day_then_stops(tmp_path, no_network):
+    """A cancelled run keeps the day in flight and skips the rest of the range."""
+    stop = threading.Event()
+
+    def editions():
+        stop.set()  # the interrupt arrives while this day is being fetched
+        return _one_edition()
+
+    events = []
+    stats = run_site(
+        _Site(editions), _opts(tmp_path, start=D1, end=D2), events.append, stop=stop
+    )
+
+    assert stats.days_success == 1
+    assert [e.kind for e in events].count("day_start") == 1  # D2 never started
 
 
 def test_run_multi_site_workers_one_is_serial(tmp_path, no_network, monkeypatch):

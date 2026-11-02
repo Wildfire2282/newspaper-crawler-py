@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from enum import Enum
 from pathlib import Path
-from typing import Any, TypeGuard, Union
+from typing import TypeGuard, Union
 
 
 class OutputFormat(str, Enum):
@@ -25,7 +25,6 @@ class ArticleRef:
 
     title: str = ""
     url: str = ""
-    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -39,7 +38,6 @@ class Article:
     paragraphs: list[str] = field(default_factory=list)
     image_desc: str = ""
     url: str = ""
-    extra: dict[str, Any] = field(default_factory=dict)
 
 
 # Edition entry: either an unfetched reference or a fully fetched article.

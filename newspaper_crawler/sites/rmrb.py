@@ -76,12 +76,16 @@ def _old_article_refs(soup: BeautifulSoup, base: str) -> list[ArticleRef]:
 def _parse_old_edition(d: date, page: int, html: str) -> Optional[Edition]:
     """Parse one old-system layout page; None when it yields no article."""
     doc = make_soup(html)
-    name = f"第{page:02d}版"
-    t = doc.find("title")
-    if t is not None:
-        m = RE_OLD_ED.search(t.get_text().strip())
+    # The page banner ("第01版:要闻") carries the edition name; <title> is just
+    # "人民日报-人民网" on this system. Empty name = "第NN版" alone, no duplicate label.
+    name = ""
+    for el in (doc.select_one("p.ban"), doc.find("title")):
+        if el is None:
+            continue
+        m = RE_OLD_ED.search(el.get_text().strip())
         if m:
             name = m.group(1).strip()
+            break
     refs = _old_article_refs(doc, _old_layout_url(d, page))
     if not refs:
         return None

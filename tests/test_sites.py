@@ -262,7 +262,6 @@ def test_jjrb_editions_and_article():
     assert (editions[0].num, editions[0].name) == (1, "要闻")
     ref = editions[0].articles[0]
     assert ref.url == article
-    assert ref.extra == {"content_id": "55"}
 
     art = site.fetch_article(http, ref, d)
     assert art is not None
@@ -479,3 +478,57 @@ def test_rmrb_old_fetches_only_pages_found_in_nav():
 
     assert [e.num for e in editions] == [1, 2]
     assert len(http.calls) == 2  # 只抓第 1、2 版，未盲探 3..20
+
+
+# ---------------------------------------------------------------- edition names
+# Live pages: the old People's Daily <title> is "人民日报-人民网" (no page info), and
+# the new Guangming .m-type is "01版:头版". Both used to produce a doubled label such
+# as "第01版 · 第01版" / "第01版 · 01版:头版".
+
+
+def test_rmrb_old_edition_name_comes_from_the_page_banner():
+    d = date(2024, 11, 30)
+    layout = f"{rmrb.BASE_URL}/html/2024-11/30/nbs.D110000renmrb_01.htm"
+    http = _FakeHttp(
+        {
+            layout: "<title>人民日报-人民网</title>"
+            '<p class="left ban">第01版:要闻</p>'
+            '<a href="nw.D110000renmrb_20241130_1-01.htm">稿件</a>'
+        }
+    )
+
+    editions = rmrb.RenminCrawler().get_editions(http, d)
+
+    assert editions[0].name == "要闻"
+
+
+def test_rmrb_old_edition_name_is_empty_when_the_page_has_none():
+    d = date(2024, 11, 30)
+    layout = f"{rmrb.BASE_URL}/html/2024-11/30/nbs.D110000renmrb_01.htm"
+    http = _FakeHttp(
+        {
+            layout: "<title>人民日报-人民网</title>"
+            '<a href="nw.D110000renmrb_20241130_1-01.htm">稿件</a>'
+        }
+    )
+
+    editions = rmrb.RenminCrawler().get_editions(http, d)
+
+    # Blank, not "第01版": the label already adds that, and would print it twice.
+    assert editions[0].name == ""
+
+
+def test_gmrb_new_edition_name_drops_the_number_prefix():
+    d = date(2026, 1, 5)
+    layout = f"{gmrb.BASE_URL}/gmrb/html/layout/202601/05/node_01.html"
+    http = _FakeHttp(
+        {
+            layout: '<div class="m-type"><span>01版:</span><span>头版</span></div>'
+            '<div class="m-title-list"><div class="m-list-wrap"><ul>'
+            '<li><a href="content_1.html"><p>标题一</p></a></li></ul></div></div>'
+        }
+    )
+
+    editions = gmrb.GuangmingCrawler().get_editions(http, d)
+
+    assert editions[0].name == "头版"

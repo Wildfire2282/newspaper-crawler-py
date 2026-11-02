@@ -67,6 +67,7 @@ def run_site(
     on_event: EventFn,
     on_day: Optional[DayFn] = None,
     days: Optional[set[str]] = None,
+    stop: Optional[threading.Event] = None,
 ) -> CrawlStats:
     """Crawl every day in opts' range for one site.
 
@@ -77,6 +78,9 @@ def run_site(
         days: optional ISO-date allow-list. Only these days are crawled, which is how
             ``crawl --resume`` re-runs exactly the days left open by the last run. A
             day outside the range is ignored.
+        stop: optional cancellation flag, checked before each day. Set by
+            :func:`run_multi` when the run is interrupted; the day in flight is still
+            completed and written.
 
     Returns:
         Counters for this site. Per-day failures (edition fetch error or write error)
@@ -215,6 +219,8 @@ def run_site(
     try:
         current = opts.start_date
         while current <= opts.end_date:
+            if stop is not None and stop.is_set():
+                break
             if days is None or current.isoformat() in days:
                 crawl_one_day(current)
             current += timedelta(days=1)
@@ -255,13 +261,14 @@ def run_multi(
         carries no such guarantee (it is meant for a thread-safe store). A site that
         fails outright does not abort the others.
 
-        A KeyboardInterrupt in the main thread unwinds this function and cancels the
-        site tasks that have not started yet; the site already running keeps going
-        until its current day is written out.
+        A KeyboardInterrupt in the main thread unwinds this function: queued site
+        tasks are cancelled and running sites stop after the day in flight, so
+        Ctrl+C is not held up by the rest of the date range.
     """
     started = time.monotonic()
     merged = CrawlStats()
     lock = threading.Lock()
+    stop = threading.Event()
 
     def emit(event: ProgressEvent) -> None:
         with lock:
@@ -275,7 +282,7 @@ def run_multi(
                     kind="log",
                     level="warn",
                     site=key,
-                    message=f"[{key}] warn 未找到站点: {key}，已跳过",
+                    message=f"[{key}] 未找到站点，已跳过",
                 )
             )
             return None
@@ -286,6 +293,7 @@ def run_multi(
                 emit,
                 on_day,
                 days_by_site.get(key) if days_by_site else None,
+                stop,
             )
         except Exception as exc:  # One failing site must not abort the others.
             log.error("站点 %s 运行失败: %s", site.name, exc)
@@ -294,17 +302,25 @@ def run_multi(
                     kind="log",
                     level="error",
                     site=site.name,
-                    message=f"[{site.name}] error 运行失败: {exc}",
+                    message=f"[{site.name}] 运行失败: {exc}",
                 )
             )
             return None
 
     if site_keys:
         workers = max(1, min(max_site_workers, len(site_keys)))
-        with ThreadPoolExecutor(max_workers=workers) as pool:
+        pool = ThreadPoolExecutor(max_workers=workers)
+        try:
             for stats in pool.map(crawl_one, site_keys):
                 if stats is not None:
                     merged.merge(stats)
+        except BaseException:
+            # Tell the sites still running to stop after their current day; the
+            # shutdown below then waits only that long.
+            stop.set()
+            raise
+        finally:
+            pool.shutdown(wait=True)
 
     elapsed = time.monotonic() - started
     emit(

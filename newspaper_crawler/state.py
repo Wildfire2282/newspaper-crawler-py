@@ -15,6 +15,7 @@ The per-day ledger is what makes ``crawl --resume`` precise: ``pending`` /
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -22,7 +23,7 @@ import threading
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 from .storage import atomic_write
 from .util import parse_date
@@ -276,7 +277,9 @@ class StateStore:
                 self.history = [h for h in history if isinstance(h, dict)]
         except (OSError, ValueError) as exc:
             log.warning("状态文件无法读取（%s），已备份为 %s.bak", exc, self.path.name)
-            self.path.replace(self.path.with_suffix(self.path.suffix + ".bak"))
+            # A failed backup must not stop the downloader either.
+            with contextlib.suppress(OSError):
+                self.path.replace(self.path.with_suffix(self.path.suffix + ".bak"))
 
     # ------------------------------------------------------------------ saving
 
@@ -383,6 +386,20 @@ class StateStore:
             )
             del self.history[HISTORY_LIMIT:]
             self.save()
+
+    def day_hook(self) -> Callable[..., None]:
+        """Scheduler ``on_day`` callback: persist one outcome, never raise.
+
+        The scheduler calls this from several site threads; writes are serialized
+        here. Losing a ledger update must not abort a crawl that is otherwise
+        working, so write errors are swallowed.
+        """
+
+        def on_day(site, day, status, path=None, error=None) -> None:
+            with contextlib.suppress(OSError):
+                self.record_day(site, day, status, path=path, error=error)
+
+        return on_day
 
     def open_days(self) -> list[DayRecord]:
         """Entries of ``last_run`` still worth retrying (empty when there is none)."""

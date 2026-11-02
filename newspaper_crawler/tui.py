@@ -8,7 +8,7 @@ the project state file as they are made, and re-applied the next time the menu o
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Optional
 
@@ -22,7 +22,13 @@ from . import __version__ as VERSION
 from .models import OutputFormat
 from .registry import all_sites, lookup
 from .scheduler import run_multi
-from .state import Preferences, StateStore, resume_days, resume_plan
+from .state import (
+    Preferences,
+    StateStore,
+    default_preferences,
+    resume_days,
+    resume_plan,
+)
 from .util import configure_logging, make_crawl_options, parse_date
 
 console = Console()
@@ -85,17 +91,7 @@ def print_banner() -> None:
 
 def default_state() -> dict:
     """Initial state: last 7 days, all sites, ``./downloads``."""
-    today = date.today()
-    return {
-        "site_keys": [],  # empty == all sites; filled in by the site menu
-        "start_date": today - timedelta(days=6),
-        "end_date": today,
-        "output_dir": Path.cwd() / "downloads",
-        "output_format": "md",  # md | txt
-        "max_workers": 5,
-        "fast_mode": False,
-        "skip_existing": True,
-    }
+    return state_from_preferences(default_preferences())
 
 
 def state_from_preferences(prefs: Preferences) -> dict:
@@ -107,18 +103,16 @@ def state_from_preferences(prefs: Preferences) -> dict:
     output_dir = Path(os.path.expanduser(prefs.output_dir))
     if not output_dir.is_absolute():
         output_dir = Path.cwd() / output_dir
-    state = default_state()
-    state.update(
-        site_keys=list(prefs.site_keys),
-        start_date=prefs.start_date,
-        end_date=prefs.end_date,
-        output_dir=output_dir,
-        output_format=prefs.output_format,
-        max_workers=prefs.max_workers,
-        fast_mode=prefs.fast_mode,
-        skip_existing=prefs.skip_existing,
-    )
-    return state
+    return {
+        "site_keys": list(prefs.site_keys),  # empty == all sites
+        "start_date": prefs.start_date,
+        "end_date": prefs.end_date,
+        "output_dir": output_dir,
+        "output_format": prefs.output_format,  # md | txt
+        "max_workers": prefs.max_workers,
+        "fast_mode": prefs.fast_mode,
+        "skip_existing": prefs.skip_existing,
+    }
 
 
 def _prefs_from_state(state: dict) -> dict:
@@ -342,7 +336,7 @@ def start_download(state: dict, store: Optional[StateStore] = None) -> None:
         return
 
     save_preferences(state, store)
-    run_crawl(state, store, site_keys, opts)
+    run_crawl(store, site_keys, opts)
 
 
 def _offer_resume(state: dict, store: StateStore) -> bool:
@@ -367,7 +361,7 @@ def _offer_resume(state: dict, store: StateStore) -> bool:
     if planned is None:  # The ledger references sites that no longer exist.
         return True
     site_keys, opts, days_by_site = planned
-    run_crawl(state, store, site_keys, opts, days_by_site=days_by_site)
+    run_crawl(store, site_keys, opts, days_by_site=days_by_site)
     return True
 
 
@@ -397,7 +391,6 @@ def _resume_options(open_days, store: StateStore):
 
 
 def run_crawl(
-    state: dict,
     store: Optional[StateStore],
     site_keys: list[str],
     opts,
@@ -424,11 +417,10 @@ def run_crawl(
             site_keys,
             opts,
             on_event=handle_event,
-            on_day=_on_day(store),
+            on_day=store.day_hook() if store is not None else None,
             days_by_site=days_by_site,
         )
     except KeyboardInterrupt:
-        # run_multi is synchronous, so the pool cannot be cancelled from a callback.
         # Days already finished are in the ledger; the rest stay pending.
         if store is not None:
             store.finish_run({})
@@ -439,18 +431,8 @@ def run_crawl(
         return
     if store is not None:
         store.finish_run(stats.as_dict())
-    console.print(f"[green]文件保存在：{state['output_dir']}[/green]")
-
-
-def _on_day(store: Optional[StateStore]):
-    """Ledger hook for the scheduler, or None when persistence is off."""
-    if store is None:
-        return None
-
-    def on_day(site, day, status, path, error) -> None:
-        store.record_day(site, day, status, path=path, error=error)
-
-    return on_day
+    # opts.output_dir, not the menu state: a resume writes where the old run did.
+    console.print(f"[green]文件保存在：{opts.output_dir}[/green]")
 
 
 # ---------------------------------------------------------------- main flow

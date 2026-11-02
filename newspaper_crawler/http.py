@@ -15,15 +15,14 @@ import logging
 from typing import Optional
 
 import requests
-from bs4 import BeautifulSoup
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
-from .util import make_soup
-
 DEFAULT_TIMEOUT = 30
 DEFAULT_MAX_RETRIES = 3
-# Per-page response cap: keeps an oversized or hostile page from exhausting memory.
+# Per-page response cap, enforcing only when the server sends a Content-Length.
+# shortcut: a chunked response without that header is read whole, unbounded; stream
+# and count the bytes here if untrusted hosts are ever added.
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
 # Pool sized to the maximum concurrency in use: an undersized pool discards and
 # re-handshakes connections under load (slower for us, costlier for the server).
@@ -130,13 +129,6 @@ class HttpSession:
         if resp is None:
             return None
         return _decode(resp)
-
-    def get_soup(self, url: str, silent_404: bool = False) -> Optional[BeautifulSoup]:
-        """Return the parsed HTML, or None if the request failed."""
-        html = self.get_text(url, silent_404=silent_404)
-        if html is None:
-            return None
-        return make_soup(html)
 
     def close(self) -> None:
         self.session.close()

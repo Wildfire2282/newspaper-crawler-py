@@ -34,6 +34,8 @@ SWITCH_DATE = date(2026, 1, 1)
 
 # Page name inside the old system's <title>, e.g. "第01版:要闻_光明日报".
 RE_OLD_EDITION_NAME = re.compile(r"第\d+版[:：](.+?)(?:_|$)")
+# Page name inside the new system's .m-type, e.g. "01版:头版".
+RE_NEW_EDITION_NAME = re.compile(r"^\d+版[:：]\s*(.+)$")
 # Old-system article link marker.
 NW_HREF = "nw.D110000gmrb"
 # Layout page links, new and old; used to discover the real edition set.
@@ -57,6 +59,16 @@ def _new_layout_url(d: date, page: int) -> str:
         f"{BASE_URL}/gmrb/html/layout/{d.year:04d}{d.month:02d}/{d.day:02d}"
         f"/node_{page:02d}.html"
     )
+
+
+def _new_page_name(soup: BeautifulSoup) -> str:
+    """Edition name from .m-type, without the "NN版:" prefix the label already adds."""
+    el = soup.select_one(".m-type")
+    if el is None:
+        return ""
+    name = el.get_text().strip()
+    m = RE_NEW_EDITION_NAME.match(name)
+    return m.group(1).strip() if m else name
 
 
 def _old_layout_url(d: date, page: int) -> str:
@@ -92,10 +104,9 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
         return []
 
     soup = make_soup(html)
-    name_el = soup.select_one(".m-type")
-    if name_el is None:
+    name = _new_page_name(soup)
+    if not name:
         raise EmptyIndexError("新版版面页缺少 .m-type 版面名")
-    name = name_el.get_text().strip()
 
     refs = _new_page_refs(soup, url1)
     if not refs:
@@ -119,11 +130,9 @@ def _get_new_editions(http: HttpSession, d: date) -> list[Edition]:
         if body is None:
             continue
         doc = make_soup(body)
-        name_el = doc.select_one(".m-type")
-        page_name = name_el.get_text().strip() if name_el is not None else ""
         arts = _new_page_refs(doc, page_url)
         if arts:
-            editions.append(Edition(num=p, name=page_name, articles=arts))
+            editions.append(Edition(num=p, name=_new_page_name(doc), articles=arts))
 
     editions.sort(key=lambda e: e.num)
     return editions

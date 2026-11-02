@@ -105,13 +105,7 @@ def _get_editions(http: HttpSession, d: date) -> list[Edition]:
                 p = a.find("p")
                 title = p.get_text().strip() if p is not None else a.get_text().strip()
                 if title:
-                    articles.append(
-                        ArticleRef(
-                            title=title,
-                            url=_article_url(d, cid),
-                            extra={"content_id": cid},
-                        )
-                    )
+                    articles.append(ArticleRef(title=title, url=_article_url(d, cid)))
         # Mirrors Rust: a successfully fetched layout page is kept even with no articles.
         editions.append(Edition(num=node, name=name, articles=articles))
     return editions

@@ -63,6 +63,23 @@ def test_plain_empty_editions():
     assert "该日无报纸或无法访问" in txt
 
 
+def test_unfetched_article_keeps_its_section_and_toc_anchor():
+    md = Formatter("人民日报", "http://paper.people.com.cn/rmrb").markdown(
+        D, _editions()
+    )
+    # The TOC links to #未抓取, so the body must contain that heading,
+    # otherwise a failed fetch leaves a dangling link and no trace of the title.
+    assert "  - [未抓取](#未抓取)" in md
+    assert "### 未抓取" in md
+    assert "（正文获取失败）" in md
+
+
+def test_plain_reports_unfetched_article():
+    txt = Formatter("人民日报", "http://paper.people.com.cn/rmrb").plain(D, _editions())
+    assert "■ 未抓取" in txt
+    assert "（正文获取失败）" in txt
+
+
 def test_count_full_counts_only_fetched_articles():
     assert count_full(_editions()) == 2
 

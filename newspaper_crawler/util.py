@@ -133,7 +133,8 @@ def make_crawl_options(
         end_date=end,
         output_dir=Path(output_dir),
         output_format=output_format,
-        max_workers=workers,
+        # 0 or negative means serial: clamp here so every caller gets a usable value.
+        max_workers=max(1, workers),
         article_delay=article_delay,
         day_delay=day_delay,
         skip_existing=skip_existing,

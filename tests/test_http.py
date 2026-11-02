@@ -88,16 +88,6 @@ def test_get_text_decodes_utf8_then_gbk(monkeypatch):
     assert http.get_text("http://example.com") == "中文"
 
 
-def test_get_soup_parses_html(monkeypatch):
-    http = HttpSession()
-    monkeypatch.setattr(
-        http.session, "get", lambda *a, **k: _Resp(200, b"<html><p>hi</p></html>")
-    )
-    soup = http.get_soup("http://example.com")
-    assert soup is not None
-    assert soup.p.get_text() == "hi"
-
-
 def test_configure_logging_routes_urllib3():
     configure_logging(verbose=True)
     assert logging.getLogger("urllib3").level == logging.DEBUG
