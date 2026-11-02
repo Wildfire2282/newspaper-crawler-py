@@ -1,4 +1,5 @@
-"""Project-level state persistence: preferences + run ledger.
+"""The project state file: stored preferences (see :mod:`newspaper_crawler.prefs`)
+plus the run ledger.
 
 Contract:
 - one file per working directory: ``./.newspaper-crawler.json`` (JSON, version 1);
@@ -25,7 +26,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from .models import OutputFormat
+from .prefs import Preferences, default_preferences
 from .storage import atomic_write
 from .util import parse_date
 
@@ -47,17 +48,6 @@ FAILED = "failed"
 OPEN_STATUSES = (PENDING, FAILED)
 
 
-def default_preferences() -> "Preferences":
-    """Defaults matching the interactive menu: last 7 days, all sites, ./downloads."""
-    today = date.today()
-    return Preferences(
-        site_keys=[],
-        start_date=today - timedelta(days=6),
-        end_date=today,
-        output_dir="downloads",
-    )
-
-
 def _state_path(cwd: Optional[Path]) -> Path:
     """Resolve the state file.
 
@@ -74,29 +64,6 @@ def _state_path(cwd: Optional[Path]) -> Path:
     if path.is_dir() or override.endswith(("/", os.sep)):
         return path / STATE_FILENAME
     return path
-
-
-def _relative_output_dir(value: str, cwd: Path) -> str:
-    """Store a CWD-relative form when possible, so the file stays portable."""
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        return Path(value).as_posix()
-    try:
-        return path.relative_to(cwd).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
-def _bool(value: Any, fallback: bool) -> bool:
-    return value if isinstance(value, bool) else fallback
-
-
-def _int(value: Any, fallback: int) -> int:
-    return value if isinstance(value, int) and not isinstance(value, bool) else fallback
-
-
-def _str(value: Any, fallback: str) -> str:
-    return value if isinstance(value, str) and value else fallback
 
 
 @dataclass
@@ -177,73 +144,6 @@ class RunRecord:
     def open_days(self) -> list[DayRecord]:
         """Entries still worth retrying: ``pending`` (interrupted) and ``failed``."""
         return [d for d in self.days if d.status in OPEN_STATUSES]
-
-
-@dataclass
-class Preferences:
-    """Last-used menu/CLI choices, applied as the defaults of the next run."""
-
-    site_keys: list[str] = field(default_factory=list)
-    start_date: date = field(default_factory=date.today)
-    end_date: date = field(default_factory=date.today)
-    output_dir: str = "downloads"
-    output_format: str = "md"
-    max_workers: int = 5
-    fast_mode: bool = False
-    skip_existing: bool = True
-    site_workers: int = 4
-
-    def to_dict(self, cwd: Path) -> dict:
-        return {
-            "site_keys": list(self.site_keys),
-            "start_date": self.start_date.isoformat(),
-            "end_date": self.end_date.isoformat(),
-            "output_dir": _relative_output_dir(self.output_dir, cwd),
-            "output_format": self.output_format,
-            "max_workers": self.max_workers,
-            "fast_mode": self.fast_mode,
-            "skip_existing": self.skip_existing,
-            "site_workers": self.site_workers,
-        }
-
-    @classmethod
-    def from_dict(cls, raw: dict, cwd: Path) -> "Preferences":
-        """Build preferences, keeping the default for every unusable field.
-
-        Args:
-            raw: the ``preferences`` object as stored.
-            cwd: base for resolving a relative ``output_dir``.
-        """
-        base = default_preferences()
-        try:
-            start = parse_date(str(raw["start_date"]))
-            end = parse_date(str(raw["end_date"]))
-            if end < start:
-                raise ValueError("end < start")
-        except (KeyError, ValueError):
-            start, end = base.start_date, base.end_date
-
-        out = _str(raw.get("output_dir"), base.output_dir)
-        path = Path(out).expanduser()
-        if not path.is_absolute():
-            path = cwd / path
-
-        workers = _int(raw.get("max_workers"), base.max_workers)
-        site_workers = _int(raw.get("site_workers"), base.site_workers)
-        keys = raw.get("site_keys")
-        fmt = _str(raw.get("output_format"), base.output_format)
-        return cls(
-            site_keys=[str(k) for k in keys] if isinstance(keys, list) else [],
-            start_date=start,
-            end_date=end,
-            output_dir=path.as_posix(),
-            # The value becomes an argparse default, so it must be a real choice.
-            output_format=OutputFormat.parse(fmt).ext(),
-            max_workers=max(1, workers),
-            fast_mode=_bool(raw.get("fast_mode"), base.fast_mode),
-            skip_existing=_bool(raw.get("skip_existing"), base.skip_existing),
-            site_workers=max(1, site_workers),
-        )
 
 
 class StateStore:

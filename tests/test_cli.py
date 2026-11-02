@@ -241,6 +241,8 @@ def test_subcommand_help_documents_params_and_json_fields(capsys):
     crawl = _help(capsys, ["crawl", "--help"])
     for token in ["--workers", "--fast", "stats", "files", "errors", "output_dir"]:
         assert token in crawl, f"crawl 帮助缺少: {token}"
+    # The ok/err distinction is a contract for scripts: assert it stays documented.
+    assert "不影响 ok" in crawl and "total_errors" in crawl
 
     plan = _help(capsys, ["plan", "--help"])
     for token in ["--sites", "days", "summary", "退出码 1"]:

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from newspaper_crawler.prefs import default_preferences
 from newspaper_crawler.state import (
     DONE,
     EMPTY,
@@ -14,7 +15,6 @@ from newspaper_crawler.state import (
     SKIPPED,
     STATE_FILENAME,
     StateStore,
-    default_preferences,
 )
 
 
@@ -298,3 +298,17 @@ def test_malformed_ledger_days_do_not_abort_loading(tmp_path, days):
     assert store.last_run is not None
     assert store.last_run.days == []
     assert store.open_days() == []
+
+
+def test_preferences_fields_cover_every_persisted_field():
+    """The menu saves through ``fields()``; a field missing there would silently
+
+    never be stored.
+    """
+    import dataclasses
+
+    from newspaper_crawler.prefs import Preferences
+
+    assert set(Preferences().fields()) == {
+        f.name for f in dataclasses.fields(Preferences)
+    }

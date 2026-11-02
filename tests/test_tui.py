@@ -4,15 +4,9 @@ from datetime import date, timedelta
 
 from newspaper_crawler import tui
 from newspaper_crawler.models import CrawlStats
+from newspaper_crawler.prefs import Preferences
 from newspaper_crawler.scheduler import ProgressEvent
-from newspaper_crawler.state import (
-    DONE,
-    FAILED,
-    SKIPPED,
-    Preferences,
-    StateStore,
-    default_preferences,
-)
+from newspaper_crawler.state import DONE, FAILED, SKIPPED, StateStore
 
 
 def test_handle_event_renders_message_once(capsys):
@@ -54,46 +48,20 @@ def test_parse_site_selection_all_and_indexes():
 # ---------------------------------------------------------------- preferences
 
 
-def test_state_from_preferences_overrides_every_default(tmp_path):
-    prefs = Preferences(
-        site_keys=["rmrb"],
-        start_date=date(2026, 9, 1),
-        end_date=date(2026, 9, 3),
-        output_dir=tmp_path.as_posix(),
-        output_format="txt",
-        max_workers=9,
-        fast_mode=True,
-        skip_existing=False,
-    )
-
-    state = tui.state_from_preferences(prefs)
-
-    assert state["site_keys"] == ["rmrb"]
-    assert state["start_date"] == date(2026, 9, 1)
-    assert state["end_date"] == date(2026, 9, 3)
-    assert state["output_format"] == "txt"
-    assert state["max_workers"] == 9
-    assert state["fast_mode"] is True
-    assert state["skip_existing"] is False
-    assert state["output_dir"] == tmp_path
-
-
-def test_state_from_defaults_matches_default_state(tmp_path, monkeypatch):
+def test_default_preferences_are_the_menu_start(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    state = tui.state_from_preferences(default_preferences())
+    prefs = tui.default_preferences()
 
-    assert state["output_dir"] == tmp_path / "downloads"
-    assert state["output_format"] == "md"
-    assert state["start_date"] == date.today() - timedelta(days=6)
-    assert state["end_date"] == date.today()
+    assert prefs.output_path(tmp_path) == tmp_path / "downloads"
+    assert prefs.output_format == "md"
+    assert prefs.start_date == date.today() - timedelta(days=6)
+    assert prefs.end_date == date.today()
 
 
-def test_state_from_preferences_resolves_a_relative_output_dir(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-
-    state = tui.state_from_preferences(Preferences(output_dir="out"))
-
-    assert state["output_dir"] == tmp_path / "out"
+def test_output_path_resolves_relative_values(tmp_path):
+    assert Preferences(output_dir="out").output_path(tmp_path) == tmp_path / "out"
+    absolute = (tmp_path / "abs").as_posix()
+    assert Preferences(output_dir=absolute).output_path(tmp_path) == tmp_path / "abs"
 
 
 def _answer(monkeypatch, *, asks=(), confirms=()):
@@ -105,7 +73,7 @@ def _answer(monkeypatch, *, asks=(), confirms=()):
 
 def test_choose_dates_and_format_are_persisted(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
-    state = tui.default_state()
+    state = tui.default_preferences()
 
     _answer(monkeypatch, asks=["2026-09-01", "2026-09-03", "txt"])
     tui.choose_dates(state, store)
@@ -119,19 +87,19 @@ def test_choose_dates_and_format_are_persisted(tmp_path, monkeypatch):
 
 def test_choose_dates_keeps_the_range_on_invalid_input(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
-    state = tui.default_state()
-    before = (state["start_date"], state["end_date"])
+    prefs = tui.default_preferences()
+    before = (prefs.start_date, prefs.end_date)
 
     _answer(monkeypatch, asks=["不是日期", "也不是"])
-    tui.choose_dates(state, store)
+    tui.choose_dates(prefs, store)
 
-    assert (state["start_date"], state["end_date"]) == before
+    assert (prefs.start_date, prefs.end_date) == before
     assert StateStore(tmp_path).preferences.start_date == before[0]
 
 
 def test_choose_advanced_persists_workers_and_toggles(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
-    state = tui.default_state()
+    state = tui.default_preferences()
 
     _answer(monkeypatch, asks=["8"], confirms=[True, False])
     tui.choose_advanced(state, store)
@@ -144,25 +112,25 @@ def test_choose_advanced_persists_workers_and_toggles(tmp_path, monkeypatch):
 
 def test_choose_sites_persists_the_selection(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
-    state = tui.default_state()
+    prefs = tui.default_preferences()
 
     _answer(monkeypatch, asks=["1"])
-    tui.choose_sites(state, store)
+    tui.choose_sites(prefs, store)
 
-    assert state["site_keys"] == ["rmrb"]
+    assert prefs.site_keys == ["rmrb"]
     assert StateStore(tmp_path).preferences.site_keys == ["rmrb"]
 
 
 def test_menu_functions_work_without_a_store(monkeypatch):
-    state = tui.default_state()
+    prefs = tui.default_preferences()
     _answer(monkeypatch, asks=["txt", "5"], confirms=[False, True])
 
-    tui.choose_format(state, None)
-    tui.choose_advanced(state, None)
-    tui.save_preferences(state, None)  # a missing store means "do not persist"
+    tui.choose_format(prefs, None)
+    tui.choose_advanced(prefs, None)
+    tui.save_preferences(prefs, None)  # a missing store means "do not persist"
 
-    assert state["output_format"] == "txt"
-    assert state["max_workers"] == 5
+    assert prefs.output_format == "txt"
+    assert prefs.max_workers == 5
 
 
 # ---------------------------------------------------------------- resume flow
@@ -188,7 +156,7 @@ def test_start_download_offers_to_resume_open_days(tmp_path, monkeypatch):
     monkeypatch.setattr(tui, "run_multi", fake_run_multi)
     _answer(monkeypatch, confirms=[True])  # accept the resume prompt
 
-    tui.start_download(tui.default_state(), store)
+    tui.start_download(tui.default_preferences(), store)
 
     assert seen == {
         "keys": ["rmrb"],
@@ -216,7 +184,7 @@ def test_start_download_skips_the_resume_prompt_when_nothing_is_open(tmp_path, m
         lambda keys, opts, **kw: ran.append(keys) or CrawlStats(),
     )
 
-    tui.start_download(tui.default_state(), store)
+    tui.start_download(tui.default_preferences(), store)
 
     assert prompts == ["确认开始下载？"]  # no resume offer
     assert len(ran) == 1  # proceeded to a fresh run instead
@@ -267,7 +235,7 @@ def test_start_download_runs_fresh_when_the_resume_offer_is_declined(
         tui, "run_multi", lambda keys, opts, **kw: ran.append(keys) or CrawlStats()
     )
 
-    tui.start_download(tui.default_state(), store)
+    tui.start_download(tui.default_preferences(), store)
 
     assert prompts[0].startswith("发现上次未完成的 1 天")
     assert prompts[-1] == "确认开始下载？"
@@ -300,7 +268,7 @@ def test_resuming_a_ledger_with_a_vanished_site_clears_it(tmp_path, monkeypatch)
     monkeypatch.setattr(tui, "run_multi", fake_run_multi)
     monkeypatch.setattr(tui, "confirm", lambda *a, **k: True)
 
-    tui.start_download(tui.default_state(), store)
+    tui.start_download(tui.default_preferences(), store)
 
     reloaded = StateStore(tmp_path)
     assert [d.site for d in reloaded.last_run.days] == ["rmrb"]  # gone is not rewritten
@@ -319,7 +287,7 @@ def test_resume_offer_counts_only_resumable_days(tmp_path, monkeypatch):
     )
     monkeypatch.setattr(tui, "run_multi", lambda *a, **k: CrawlStats())
 
-    tui.start_download(tui.default_state(), store)
+    tui.start_download(tui.default_preferences(), store)
 
     assert prompts[0].startswith("发现上次未完成的 1 天")  # not 2: one site vanished
 
@@ -340,8 +308,18 @@ def test_resume_offer_falls_back_to_a_fresh_run_when_nothing_is_resumable(
         tui, "run_multi", lambda keys, opts, **k: ran.append(keys) or CrawlStats()
     )
 
-    tui.start_download(tui.default_state(), store)
+    tui.start_download(tui.default_preferences(), store)
 
     # Not a dead end: the user gets the normal fresh-run flow instead of the menu.
     assert prompts == ["确认开始下载？"]
     assert ran == [["rmrb", "gmrb", "dzrb", "jjrb"]]
+
+
+def test_menu_save_persists_every_field(tmp_path):
+    store = StateStore(tmp_path)
+    prefs = tui.default_preferences()
+    prefs.site_workers = 7  # the dict-based menu used to drop this one
+
+    tui.save_preferences(prefs, store)
+
+    assert StateStore(tmp_path).preferences.site_workers == 7

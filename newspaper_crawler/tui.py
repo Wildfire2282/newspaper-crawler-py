@@ -23,10 +23,11 @@ from rich.text import Text
 from . import __version__ as VERSION
 from .models import OutputFormat
 from .output import make_console
+from .prefs import Preferences, default_preferences
 from .registry import all_sites, lookup
 from .resume import ResumePlan, plan_resume, resume_days
 from .scheduler import run_multi
-from .state import Preferences, StateStore, default_preferences
+from .state import StateStore
 from .util import configure_logging, make_crawl_options, parse_date
 
 console = make_console(markup=True)
@@ -87,53 +88,13 @@ def print_banner() -> None:
     console.print(banner)
 
 
-def default_state() -> dict:
-    """Initial state: last 7 days, all sites, ``./downloads``."""
-    return state_from_preferences(default_preferences())
-
-
-def state_from_preferences(prefs: Preferences) -> dict:
-    """Build the menu state from stored preferences (falling back to the defaults).
-
-    A relative stored ``output_dir`` is resolved against the working directory, the same
-    rule the output-dir menu applies, so the menu always shows one absolute path.
-    """
-    output_dir = Path(os.path.expanduser(prefs.output_dir))
-    if not output_dir.is_absolute():
-        output_dir = Path.cwd() / output_dir
-    return {
-        "site_keys": list(prefs.site_keys),  # empty == all sites
-        "start_date": prefs.start_date,
-        "end_date": prefs.end_date,
-        "output_dir": output_dir,
-        "output_format": prefs.output_format,  # md | txt
-        "max_workers": prefs.max_workers,
-        "fast_mode": prefs.fast_mode,
-        "skip_existing": prefs.skip_existing,
-    }
-
-
-def _prefs_from_state(state: dict) -> dict:
-    """The persistable slice of the menu state, keyed by preference field name."""
-    return {
-        "site_keys": list(state["site_keys"]),
-        "start_date": state["start_date"],
-        "end_date": state["end_date"],
-        "output_dir": str(state["output_dir"]),
-        "output_format": state["output_format"],
-        "max_workers": state["max_workers"],
-        "fast_mode": state["fast_mode"],
-        "skip_existing": state["skip_existing"],
-    }
-
-
-def save_preferences(state: dict, store: Optional[StateStore]) -> None:
-    """Persist the current menu state; a missing store means no persistence."""
+def save_preferences(prefs: Preferences, store: Optional[StateStore]) -> None:
+    """Persist the menu state; a missing store means no persistence."""
     if store is not None:
-        store.save_preferences(**_prefs_from_state(state))
+        store.save_preferences(**prefs.fields())
 
 
-def choose_sites(state: dict, store: Optional[StateStore] = None) -> None:
+def choose_sites(prefs: Preferences, store: Optional[StateStore] = None) -> None:
     """Menu 1: pick newspapers (multi-select, defaults to all)."""
     sites = all_sites()
     if not sites:
@@ -152,7 +113,7 @@ def choose_sites(state: dict, store: Optional[StateStore] = None) -> None:
     console.print(table)
 
     current_idx = [
-        i for i, s in enumerate(sites, 1) if s.crawler_id in state["site_keys"]
+        i for i, s in enumerate(sites, 1) if s.crawler_id in prefs.site_keys
     ]
     default_hint = (
         "，".join(str(i) for i in current_idx)
@@ -167,22 +128,22 @@ def choose_sites(state: dict, store: Optional[StateStore] = None) -> None:
     if not selected:
         console.print("[yellow]未选择任何站点，保持原选择[/yellow]")
         return
-    state["site_keys"] = [sites[i - 1].crawler_id for i in selected]
+    prefs.site_keys = [sites[i - 1].crawler_id for i in selected]
     names = [s.name for i, s in enumerate(sites, 1) if i in selected]
     console.print(f"[green]已选：{'、'.join(names)}[/green]")
-    save_preferences(state, store)
+    save_preferences(prefs, store)
 
 
-def choose_dates(state: dict, store: Optional[StateStore] = None) -> None:
+def choose_dates(prefs: Preferences, store: Optional[StateStore] = None) -> None:
     """Menu 2: set the date range. Keeps the previous range on invalid input."""
     console.print(
         Panel(
-            f"当前范围：[bold]{state['start_date']} ~ {state['end_date']}[/bold]",
+            f"当前范围：[bold]{prefs.start_date} ~ {prefs.end_date}[/bold]",
             title="日期范围",
             border_style="cyan",
         )
     )
-    old_start, old_end = state["start_date"], state["end_date"]
+    old_start, old_end = prefs.start_date, prefs.end_date
 
     start_s = ask(
         "起始日期（YYYY-MM-DD 或 YYYYMMDD，留空保持）",
@@ -202,59 +163,59 @@ def choose_dates(state: dict, store: Optional[StateStore] = None) -> None:
     if end < start:
         console.print("[red]结束日期不能早于起始日期，已保持原范围[/red]")
         return
-    state["start_date"], state["end_date"] = start, end
+    prefs.start_date, prefs.end_date = start, end
     if end > date.today():
         console.print(
             "[yellow]提示：结束日期晚于今天，今天可能还没有当日电子报[/yellow]"
         )
     console.print(f"[green]日期范围：{start} ~ {end}[/green]")
-    save_preferences(state, store)
+    save_preferences(prefs, store)
 
 
-def choose_output_dir(state: dict, store: Optional[StateStore] = None) -> None:
+def choose_output_dir(prefs: Preferences, store: Optional[StateStore] = None) -> None:
     """Menu 3: set the output directory (``~`` expanded, relative to the CWD)."""
     answer = ask(
         "输出目录（支持 ~；留空保持当前）",
-        default=str(state["output_dir"]),
+        default=str(prefs.output_path(Path.cwd())),
     ).strip()
     if answer:
         path = Path(os.path.expanduser(answer))
         if not path.is_absolute():
             path = Path.cwd() / path
-        state["output_dir"] = path
-    console.print(f"[green]输出目录：{escape(str(state['output_dir']))}[/green]")
-    save_preferences(state, store)
+        prefs.output_dir = path.as_posix()
+    console.print(f"[green]输出目录：{escape(str(prefs.output_path(Path.cwd())))}[/green]")
+    save_preferences(prefs, store)
 
 
-def choose_format(state: dict, store: Optional[StateStore] = None) -> None:
+def choose_format(prefs: Preferences, store: Optional[StateStore] = None) -> None:
     """Menu 4: set the output format."""
-    fmt = ask("输出格式", choices=["md", "txt"], default=state["output_format"])
-    state["output_format"] = fmt
+    fmt = ask("输出格式", choices=["md", "txt"], default=prefs.output_format)
+    prefs.output_format = fmt
     console.print(f"[green]输出格式：{fmt}[/green]")
-    save_preferences(state, store)
+    save_preferences(prefs, store)
 
 
-def choose_advanced(state: dict, store: Optional[StateStore] = None) -> None:
+def choose_advanced(prefs: Preferences, store: Optional[StateStore] = None) -> None:
     """Menu 5: article concurrency, fast mode, skip-existing."""
     console.print(Panel("高级选项", border_style="cyan"))
 
-    workers = ask("并发线程数", default=str(state["max_workers"]))
+    workers = ask("并发线程数", default=str(prefs.max_workers))
     try:
-        state["max_workers"] = max(1, int(workers))
+        prefs.max_workers = max(1, int(workers))
     except ValueError:
         console.print("[yellow]并发数无效，保持原值[/yellow]")
 
-    state["fast_mode"] = confirm(
-        "快速模式（降低延迟、加大并发，谨慎使用）", default=state["fast_mode"]
+    prefs.fast_mode = confirm(
+        "快速模式（降低延迟、加大并发，谨慎使用）", default=prefs.fast_mode
     )
-    state["skip_existing"] = confirm(
-        "断点续传（已下载日期自动跳过）", default=state["skip_existing"]
+    prefs.skip_existing = confirm(
+        "断点续传（已下载日期自动跳过）", default=prefs.skip_existing
     )
     console.print(
-        f"[green]并发 {state['max_workers']} · 快速模式 {'开' if state['fast_mode'] else '关'} · "
-        f"断点续传 {'开' if state['skip_existing'] else '关'}[/green]"
+        f"[green]并发 {prefs.max_workers} · 快速模式 {'开' if prefs.fast_mode else '关'} · "
+        f"断点续传 {'开' if prefs.skip_existing else '关'}[/green]"
     )
-    save_preferences(state, store)
+    save_preferences(prefs, store)
 
 
 # ---------------------------------------------------------------- event rendering
@@ -292,8 +253,8 @@ def handle_event(ev) -> None:
 # ---------------------------------------------------------------- download flow
 
 
-def start_download(state: dict, store: Optional[StateStore] = None) -> None:
-    """Menu 6: run the crawl with the current state.
+def start_download(prefs: Preferences, store: Optional[StateStore] = None) -> None:
+    """Menu 6: run the crawl with the current preferences.
 
     When the ledger holds days left open by an earlier run, the user is offered a
     resume instead. Either way every (site, date) outcome is written to the ledger as
@@ -302,7 +263,7 @@ def start_download(state: dict, store: Optional[StateStore] = None) -> None:
     if store is not None and _offer_resume(store):
         return
 
-    site_keys = state["site_keys"] or [s.crawler_id for s in all_sites()]
+    site_keys = prefs.site_keys or [s.crawler_id for s in all_sites()]
     if not site_keys:
         console.print("[red]请先选择报纸（菜单 1）[/red]")
         return
@@ -312,30 +273,31 @@ def start_download(state: dict, store: Optional[StateStore] = None) -> None:
         site = lookup(key)
         site_names.append(site.name if site else key)
 
-    fmt = OutputFormat.parse(state["output_format"])
+    output_dir = prefs.output_path(Path.cwd())
+    fmt = OutputFormat.parse(prefs.output_format)
     opts = make_crawl_options(
-        start=state["start_date"],
-        end=state["end_date"],
-        output_dir=state["output_dir"],
+        start=prefs.start_date,
+        end=prefs.end_date,
+        output_dir=output_dir,
         output_format=fmt,
-        workers=state["max_workers"],
-        fast=state["fast_mode"],
-        skip_existing=state["skip_existing"],
+        workers=prefs.max_workers,
+        fast=prefs.fast_mode,
+        skip_existing=prefs.skip_existing,
     )
 
     summary = escape(
         f"报纸：{'、'.join(site_names)}\n"
-        f"日期：{state['start_date']} ~ {state['end_date']}\n"
-        f"输出目录：{state['output_dir']}\n"
-        f"格式：{state['output_format']} · 并发：{opts.max_workers} · "
-        f"快速模式：{'开' if state['fast_mode'] else '关'} · "
-        f"断点续传：{'开' if state['skip_existing'] else '关'}"
+        f"日期：{prefs.start_date} ~ {prefs.end_date}\n"
+        f"输出目录：{output_dir}\n"
+        f"格式：{prefs.output_format} · 并发：{opts.max_workers} · "
+        f"快速模式：{'开' if prefs.fast_mode else '关'} · "
+        f"断点续传：{'开' if prefs.skip_existing else '关'}"
     )
     console.print(Panel(summary, title="下载配置", border_style="green"))
     if not confirm("确认开始下载？", default=True):
         return
 
-    save_preferences(state, store)
+    save_preferences(prefs, store)
     run_crawl(store, site_keys, opts)
 
 
@@ -426,7 +388,7 @@ def run_crawl(
 # ---------------------------------------------------------------- main flow
 
 
-def main_loop(state: dict, store: Optional[StateStore] = None) -> None:
+def main_loop(prefs: Preferences, store: Optional[StateStore] = None) -> None:
     while True:
         menu = Panel(
             "\n".join(
@@ -451,17 +413,17 @@ def main_loop(state: dict, store: Optional[StateStore] = None) -> None:
             console.print("\n[dim]输入已结束，退出。[/dim]")
             break
         if choice == "1":
-            choose_sites(state, store)
+            choose_sites(prefs, store)
         elif choice == "2":
-            choose_dates(state, store)
+            choose_dates(prefs, store)
         elif choice == "3":
-            choose_output_dir(state, store)
+            choose_output_dir(prefs, store)
         elif choice == "4":
-            choose_format(state, store)
+            choose_format(prefs, store)
         elif choice == "5":
-            choose_advanced(state, store)
+            choose_advanced(prefs, store)
         elif choice == "6":
-            start_download(state, store)
+            start_download(prefs, store)
         elif choice == "7":
             console.print("[dim]再见！[/dim]")
             break
@@ -470,8 +432,8 @@ def main_loop(state: dict, store: Optional[StateStore] = None) -> None:
 def run() -> int:
     """Enter the interactive menu. Always returns 0 (Ctrl+C and EOF are handled).
 
-    Menu choices from the previous session are restored from the project state file
-    and saved again as they change, so the menu reopens where it was left off.
+    The menu edits the stored :class:`Preferences` in place and saves them as they
+    change, so it reopens where it was left off.
     """
     configure_logging()
     try:
@@ -481,8 +443,7 @@ def run() -> int:
         store = None
     try:
         print_banner()
-        state = state_from_preferences(store.preferences) if store else default_state()
-        main_loop(state, store)
+        main_loop(store.preferences if store else default_preferences(), store)
     except KeyboardInterrupt:
         console.print("\n[yellow]已退出。[/yellow]")
     except _InputClosed:
