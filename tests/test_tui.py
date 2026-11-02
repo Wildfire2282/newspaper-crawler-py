@@ -176,7 +176,12 @@ def test_start_download_offers_to_resume_open_days(tmp_path, monkeypatch):
     seen: dict = {}
 
     def fake_run_multi(keys, opts, on_event, on_day=None, days_by_site=None, **kwargs):
-        seen.update(keys=keys, start=opts.start_date, end=opts.end_date)
+        seen.update(
+            keys=keys,
+            start=opts.start_date,
+            end=opts.end_date,
+            days_by_site=days_by_site,
+        )
         on_day("rmrb", date(2026, 9, 1), DONE, tmp_path / "a.md", None)
         return CrawlStats(days_attempted=1, days_success=1)
 
@@ -185,7 +190,13 @@ def test_start_download_offers_to_resume_open_days(tmp_path, monkeypatch):
 
     tui.start_download(tui.default_state(), store)
 
-    assert seen == {"keys": ["rmrb"], "start": date(2026, 9, 1), "end": date(2026, 9, 1)}
+    assert seen == {
+        "keys": ["rmrb"],
+        "start": date(2026, 9, 1),
+        "end": date(2026, 9, 1),
+        # the allow-list is what keeps a resume from re-walking the whole range
+        "days_by_site": {"rmrb": {"2026-09-01"}},
+    }
     assert StateStore(tmp_path).open_days() == []
 
 
@@ -212,12 +223,6 @@ def test_start_download_skips_the_resume_prompt_when_nothing_is_open(tmp_path, m
 
 
 
-def test_resume_options_rejects_a_ledger_with_vanished_sites(tmp_path, capsys):
-    store = StateStore(tmp_path)
-    store.start_run(["gone"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
-
-    assert tui._resume_options(store.open_days(), store) is None
-    assert "已不可用" in capsys.readouterr().out
 
 
 def test_run_crawl_closes_the_ledger_on_interrupt(tmp_path, monkeypatch, capsys):
@@ -280,20 +285,6 @@ def test_handle_event_keeps_bracketed_site_keys(capsys):
     assert "[rmrb] 未找到站点，已跳过" in capsys.readouterr().out
 
 
-def test_resume_options_keeps_the_days_it_can_still_crawl(tmp_path, capsys):
-    store = StateStore(tmp_path)
-    store.start_run(["gone", "rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
-    store.record_day("gone", date(2026, 9, 1), FAILED)
-    store.record_day("rmrb", date(2026, 9, 1), FAILED)
-
-    planned = tui._resume_options(store.open_days(), store)
-
-    assert planned is not None  # the CLI resumes the usable days; so does the menu
-    keys, _, days_by_site, days = planned
-    assert keys == ["rmrb"]
-    assert days_by_site == {"rmrb": {"2026-09-01"}}
-    assert [d.site for d in days] == ["rmrb"]
-    assert "已跳过" in capsys.readouterr().out
 
 
 def test_resuming_a_ledger_with_a_vanished_site_clears_it(tmp_path, monkeypatch):

@@ -440,25 +440,3 @@ def _date_range(start: date, end: date) -> list[date]:
         days.append(current)
         current += timedelta(days=1)
     return days
-
-
-def resume_plan(store: "StateStore") -> Optional[tuple[list[DayRecord], Path, str]]:
-    """Return (open days, output dir, format) of the last run, or None when idle.
-
-    The output directory is the one recorded for the run, not the current
-    preference: resuming must write where the interrupted run was writing.
-    """
-    if store.last_run is None:
-        return None
-    open_days = store.last_run.open_days()
-    if not open_days:
-        return None
-    return open_days, Path(store.last_run.output_dir), store.last_run.fmt
-
-
-def resume_days(open_days: list[DayRecord]) -> dict[str, set[str]]:
-    """Group open ledger entries into the scheduler's per-site day allow-list."""
-    grouped: dict[str, set[str]] = {}
-    for entry in open_days:
-        grouped.setdefault(entry.site, set()).add(entry.date.isoformat())
-    return grouped

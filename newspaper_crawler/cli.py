@@ -25,18 +25,9 @@ from . import __version__ as VERSION
 from .base import SiteCrawler
 from .models import OutputFormat
 from .registry import all_sites, lookup
+from .resume import plan_resume
 from .scheduler import ProgressEvent, run_multi
-from .state import (
-    DONE,
-    EMPTY,
-    FAILED,
-    PENDING,
-    SKIPPED,
-    Preferences,
-    StateStore,
-    resume_days,
-    resume_plan,
-)
+from .state import DONE, EMPTY, FAILED, PENDING, SKIPPED, Preferences, StateStore
 from .util import configure_logging, make_crawl_options, parse_date
 
 EXIT_OK = 0
@@ -104,7 +95,8 @@ def _add_download_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _set_download_defaults(prefs: Preferences) -> None:
+def _set_download_defaults(subparsers: tuple[argparse.ArgumentParser, ...],
+                           prefs: Preferences) -> None:
     """Install the effective defaults for the flags the user left out.
 
     This is the single place the documented CLI defaults live. Applying the defaults
@@ -120,7 +112,7 @@ def _set_download_defaults(prefs: Preferences) -> None:
         fmt=prefs.output_format,
         site_workers=prefs.site_workers,
     )
-    for subparser in _DOWNLOAD_SUBPARSERS:
+    for subparser in subparsers:
         subparser.set_defaults(**values)
 
 
@@ -248,19 +240,13 @@ _RUNS_EPILOG = """\
   history     [{run_id, started_at, sites, summary}]，最近 20 条
   state_file  账本文件路径"""
 
-# The subcommands whose omitted flags take their value from the stored preferences.
-# Filled in by build_parser; see _set_download_defaults.
-_DOWNLOAD_SUBPARSERS: list[argparse.ArgumentParser] = []
-
-
-def build_parser() -> argparse.ArgumentParser:
+def build_parser(prefs: Optional[Preferences] = None) -> argparse.ArgumentParser:
     """Build the full argument parser.
 
-    Note:
-        The ``plan``/``crawl`` flags that may fall back to a stored preference keep
-        ``argparse.SUPPRESS`` as their default until :func:`_set_download_defaults`
-        runs, so parsing with this parser directly leaves them unset. Use
-        :func:`build_parser_with_defaults` unless you want exactly that.
+    Args:
+        prefs: when given, the ``plan``/``crawl`` flags the user leaves out default to
+            these stored preferences. When omitted they stay ``argparse.SUPPRESS``, so
+            parsing with this parser directly leaves them unset.
     """
     parser = argparse.ArgumentParser(
         prog="crawler",
@@ -278,7 +264,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="显示版本号并退出",
     )
     sub = parser.add_subparsers(dest="command", title="子命令")
-    _DOWNLOAD_SUBPARSERS.clear()
 
     p_sites = _subparser(sub, "sites", "列出可用站点", _SITES_EPILOG)
     p_sites.add_argument("--json", action="store_true", help="以 JSON 输出")
@@ -288,7 +273,6 @@ def build_parser() -> argparse.ArgumentParser:
         sub, "plan", "预演：列出将抓取/跳过的日期（不联网、不写盘）", _PLAN_EPILOG
     )
     _add_download_args(p_plan)
-    _DOWNLOAD_SUBPARSERS.append(p_plan)
     p_plan.add_argument(
         "--resume", action="store_true", help="只预演上次未完成的日期（pending/failed）"
     )
@@ -297,7 +281,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_crawl = _subparser(sub, "crawl", "执行下载", _CRAWL_EPILOG)
     _add_download_args(p_crawl)
-    _DOWNLOAD_SUBPARSERS.append(p_crawl)
     p_crawl.add_argument(
         "--workers", type=int, default=5, help="单站点并发线程数（默认 5）"
     )
@@ -333,6 +316,8 @@ def build_parser() -> argparse.ArgumentParser:
         func=cmd_interactive
     )
 
+    if prefs is not None:
+        _set_download_defaults((p_plan, p_crawl), prefs)
     return parser
 
 
@@ -552,21 +537,23 @@ def cmd_sites(args: argparse.Namespace) -> int:
 
 def cmd_plan(args: argparse.Namespace) -> int:
     store = _get_store()
-    resumed = resume_plan(store) if args.resume else None
-    if args.resume and resumed is None:
+    plan = plan_resume(store) if args.resume else None
+    if args.resume and plan is None:
         print("错误：没有可续传的任务。", file=sys.stderr)
         return EXIT_ERROR
 
-    if resumed is not None:
+    if plan is not None:
         # Resume mode is ledger-driven: the work is exactly the open (site, date)
         # pairs, so the days are listed as-is instead of re-walking a date range.
-        open_days, output_dir, fmt_name = resumed
-        fmt = OutputFormat.parse(fmt_name)
-        resolved = [(d, lookup(d.site)) for d in open_days]
-        unknown = sorted({d.site for d, site in resolved if site is None})
+        if not plan.days:
+            print("错误：账本中的站点均已不可用，无法续传。", file=sys.stderr)
+            return EXIT_ERROR
+        output_dir, fmt, start, end = plan.output_dir, plan.fmt, plan.start, plan.end
+        keys, unknown = plan.keys, plan.unknown
         days = []
-        for entry, site in resolved:
-            if site is None:
+        for entry in plan.days:
+            site = lookup(entry.site)
+            if site is None:  # filtered by plan_resume; keeps the type checker honest
                 continue
             path = site.day_filepath(entry.date, output_dir, fmt.ext())
             days.append(
@@ -579,8 +566,6 @@ def cmd_plan(args: argparse.Namespace) -> int:
                     "action": "skip" if path.exists() else "fetch",
                 }
             )
-        keys = sorted({d.site for d, site in resolved if site is not None})
-        start, end = min(d.date for d in open_days), max(d.date for d in open_days)
         site_names = "、".join(_site_name(k) for k in keys) or "（无）"
     else:
         settings = _resolve_settings(args)
@@ -647,27 +632,18 @@ def cmd_plan(args: argparse.Namespace) -> int:
 def cmd_crawl(args: argparse.Namespace) -> int:
     configure_logging(args.verbose)
     store = _get_store()
-    resumed = resume_plan(store) if args.resume else None
-    if args.resume and resumed is None:
+    plan = plan_resume(store) if args.resume else None
+    if args.resume and plan is None:
         print("错误：没有可续传的任务。", file=sys.stderr)
         return EXIT_ERROR
 
-    if resumed is not None:
-        open_days, output_dir, fmt_name = resumed
-        # A ledger written by another version may name a site that no longer exists.
-        # Drop those days from the resume: keeping them would make every later
-        # --resume fail again without ever making progress. They are reported below.
-        usable = [d for d in open_days if lookup(d.site) is not None]
-        unknown = sorted({d.site for d in open_days} - {d.site for d in usable})
-        if not usable:
+    if plan is not None:
+        if not plan.days:  # every site in the ledger is gone
             print("错误：账本中的站点均已不可用，无法续传。", file=sys.stderr)
             return EXIT_ERROR
-        open_days = usable
-        keys = sorted({d.site for d in open_days})
+        keys, unknown = plan.keys, plan.unknown
         sites = [s for s in (lookup(k) for k in keys) if s is not None]
-        dates = [d.date for d in open_days]
-        start, end = min(dates), max(dates)
-        fmt = OutputFormat.parse(fmt_name)
+        output_dir, fmt, start, end = plan.output_dir, plan.fmt, plan.start, plan.end
     else:
         settings = _resolve_settings(args)
         sites, unknown = settings.sites, settings.unknown
@@ -702,16 +678,16 @@ def cmd_crawl(args: argparse.Namespace) -> int:
             f"并发：{site_workers} 站点 × {workers} 线程 · "
             f"快速模式：{'开' if args.fast else '关'} · "
             f"断点续传：{'开' if args.skip_existing else '关'}"
-            + (" · 模式：续传上次未完成" if resumed is not None else "")
+            + (" · 模式：续传上次未完成" if plan is not None else "")
         )
     if unknown:
         print(f"警告：无法识别的站点：{'、'.join(unknown)}", file=sys.stderr)
 
     # The ledger is written before the crawl starts, so an interruption still leaves
     # the remaining days recorded as pending.
-    if resumed is not None:
-        store.start_run(keys, start, end, output_dir, fmt.ext(), days=open_days)
-        days_by_site = resume_days(open_days)
+    if plan is not None:
+        store.start_run(keys, start, end, output_dir, fmt.ext(), days=plan.days)
+        days_by_site = plan.days_by_site
     else:
         store.start_run(keys, start, end, output_dir, fmt.ext())
         days_by_site = None
@@ -734,7 +710,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     elapsed = time.monotonic() - started
 
     store.finish_run(stats.as_dict())
-    if resumed is None:
+    if plan is None:
         _update_preferences(
             store,
             sites,
@@ -758,7 +734,7 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         "output_dir": str(output_dir),
         "format": fmt.ext(),
         "elapsed_secs": round(elapsed, 1),
-        "resumed": resumed is not None,
+        "resumed": plan is not None,
         "stats": stats.as_dict(),
         "files": progress.files,
         "skipped": progress.skipped,
@@ -873,17 +849,13 @@ def build_parser_with_defaults(
     Args:
         prefs: defaults to the stored preferences of the working directory.
     """
-    parser = build_parser()
-    _set_download_defaults(prefs if prefs is not None else StateStore().preferences)
-    return parser
+    return build_parser(prefs if prefs is not None else StateStore().preferences)
 
 
 def _run_subcommand(argv: list[str]) -> int:
-    parser = build_parser()
-    store = _get_store()
-    # Flags the user left out take their value from the previous run; installing the
-    # defaults before parsing keeps a single resolution point for both subcommands.
-    _set_download_defaults(store.preferences)
+    # Flags the user left out take their value from the previous run, so the store is
+    # loaded before parsing: one resolution point for both download subcommands.
+    parser = build_parser(_get_store().preferences)
     args = parser.parse_args(argv)
     if not getattr(args, "command", None):
         parser.print_usage(sys.stderr)

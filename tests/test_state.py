@@ -15,8 +15,6 @@ from newspaper_crawler.state import (
     STATE_FILENAME,
     StateStore,
     default_preferences,
-    resume_days,
-    resume_plan,
 )
 
 
@@ -218,31 +216,6 @@ def test_history_is_capped(tmp_path):
     assert len(store.history) == 20
 
 
-def test_resume_plan_and_days(tmp_path):
-    store = StateStore(tmp_path)
-    assert resume_plan(store) is None
-
-    store.start_run(
-        ["rmrb", "gmrb"], date(2026, 9, 1), date(2026, 9, 2), tmp_path, "md"
-    )
-    store.record_day("rmrb", date(2026, 9, 1), DONE)
-    store.record_day("rmrb", date(2026, 9, 2), FAILED)
-    store.record_day("gmrb", date(2026, 9, 1), DONE)
-    store.record_day("gmrb", date(2026, 9, 2), PENDING)
-
-    planned = resume_plan(store)
-    assert planned is not None
-    open_days, output_dir, fmt = planned
-    assert output_dir == tmp_path
-    assert fmt == "md"
-    assert resume_days(open_days) == {
-        "rmrb": {"2026-09-02"},
-        "gmrb": {"2026-09-02"},
-    }
-
-    store.start_run(["rmrb"], date(2026, 9, 3), date(2026, 9, 3), tmp_path, "txt")
-    store.record_day("rmrb", date(2026, 9, 3), DONE)
-    assert resume_plan(store) is None  # a finished run offers nothing to resume
 
 
 def test_start_run_builds_entries_for_the_whole_range(tmp_path):
