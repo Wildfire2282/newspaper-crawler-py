@@ -1,6 +1,7 @@
 """tui tests: event rendering, site-selection parsing, preference persistence."""
 
 from datetime import date, timedelta
+from pathlib import Path
 
 from newspaper_crawler import tui
 from newspaper_crawler.models import CrawlStats
@@ -323,3 +324,18 @@ def test_menu_save_persists_every_field(tmp_path):
     tui.save_preferences(prefs, store)
 
     assert StateStore(tmp_path).preferences.site_workers == 7
+
+
+def test_choose_output_dir_normalizes_and_persists(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    store = StateStore(tmp_path)
+    prefs = tui.default_preferences()
+    _answer(monkeypatch, asks=["out/子目录"])
+
+    tui.choose_output_dir(prefs, store)
+
+    assert Path(prefs.output_dir).is_absolute()
+    assert Path(prefs.output_dir) == tmp_path / "out" / "子目录"
+    assert StateStore(tmp_path).preferences.output_path(tmp_path) == Path(
+        prefs.output_dir
+    )

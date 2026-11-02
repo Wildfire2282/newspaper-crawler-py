@@ -30,8 +30,8 @@ from .helptext import (
 )
 from .models import OutputFormat
 from .output import Progress, emit_json, force_utf8_output, make_console
-from .prefs import Preferences
-from .registry import all_sites, lookup
+from .prefs import Preferences, as_path
+from .registry import all_sites, display_name, lookup
 from .resume import plan_resume
 from .scheduler import run_multi
 from .state import DONE, EMPTY, FAILED, PENDING, SKIPPED, StateStore
@@ -123,6 +123,18 @@ def _set_download_defaults(subparsers: tuple[argparse.ArgumentParser, ...],
         subparser.set_defaults(**values)
 
 
+def _set_crawl_defaults(parser: argparse.ArgumentParser, prefs: Preferences) -> None:
+    """Install the crawl-only defaults (concurrency and politeness) the user left out.
+
+    ``plan`` does not fetch anything, so it has no such flags.
+    """
+    parser.set_defaults(
+        workers=prefs.max_workers,
+        fast=prefs.fast_mode,
+        skip_existing=prefs.skip_existing,
+    )
+
+
 def _add_help_flag(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("-h", "--help", action="help", help="显示帮助信息并退出")
 
@@ -155,8 +167,9 @@ def build_parser(prefs: Optional[Preferences] = None) -> argparse.ArgumentParser
     """Build the full argument parser.
 
     Args:
-        prefs: when given, the ``plan``/``crawl`` flags the user leaves out default to
-            these stored preferences. When omitted they stay ``argparse.SUPPRESS``, so
+        prefs: when given, the flags the user leaves out default to these stored
+            preferences (including crawl-only ``--workers`` / ``--fast`` /
+            ``--skip-existing``). When omitted they stay ``argparse.SUPPRESS``, so
             parsing with this parser directly leaves them unset.
     """
     parser = argparse.ArgumentParser(
@@ -193,22 +206,36 @@ def build_parser(prefs: Optional[Preferences] = None) -> argparse.ArgumentParser
     p_crawl = _subparser(sub, "crawl", "执行下载", CRAWL_EPILOG)
     _add_download_args(p_crawl)
     p_crawl.add_argument(
-        "--workers", type=int, default=5, help="单站点并发请求数（默认 5）"
+        "--workers",
+        type=int,
+        default=argparse.SUPPRESS,
+        help="单站点并发请求数（默认 5，或上次使用的值）",
     )
     p_crawl.add_argument(
-        "--fast", action="store_true", help="快速模式（降低延迟、加大并发）"
+        "--fast",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="快速模式（降低延迟、加大并发；默认关，或上次使用的值）",
+    )
+    p_crawl.add_argument(
+        "--no-fast",
+        dest="fast",
+        action="store_false",
+        default=argparse.SUPPRESS,
+        help="关闭快速模式（覆盖上次记住的值）",
     )
     p_crawl.add_argument(
         "--skip-existing",
         dest="skip_existing",
         action="store_true",
-        default=True,
-        help="跳过已下载日期（默认开启）",
+        default=argparse.SUPPRESS,
+        help="跳过已下载日期（默认开启，或上次使用的值）",
     )
     p_crawl.add_argument(
         "--no-skip-existing",
         dest="skip_existing",
         action="store_false",
+        default=argparse.SUPPRESS,
         help="不跳过已下载日期，重新抓取",
     )
     p_crawl.add_argument(
@@ -229,6 +256,7 @@ def build_parser(prefs: Optional[Preferences] = None) -> argparse.ArgumentParser
 
     if prefs is not None:
         _set_download_defaults((p_plan, p_crawl), prefs)
+        _set_crawl_defaults(p_crawl, prefs)
     return parser
 
 
@@ -268,8 +296,7 @@ def _resolve_output_dir(text: str | None) -> Path:
     """
     if text is None:
         return Path.cwd() / "downloads"
-    path = Path(text).expanduser()
-    return path if path.is_absolute() else Path.cwd() / path
+    return as_path(text, Path.cwd())
 
 
 # Set once per process by the entry point; every subcommand reads it through the
@@ -291,12 +318,6 @@ _STATUS_CN = {
     FAILED: "失败",
     PENDING: "待抓",
 }
-
-
-def _site_name(key: str) -> str:
-    """Display name of a stored site key (falls back to the key itself)."""
-    site = lookup(key)
-    return site.name if site else key
 
 
 class _Settings:
@@ -435,7 +456,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
                     "action": "skip" if path.exists() else "fetch",
                 }
             )
-        site_names = "、".join(_site_name(k) for k in keys) or "（无）"
+        site_names = "、".join(display_name(k) for k in keys) or "（无）"
     else:
         settings = _resolve_settings(args)
         keys, unknown = settings.keys, settings.unknown
@@ -675,7 +696,7 @@ def cmd_runs(args: argparse.Namespace) -> int:
         table.add_column("说明", style="dim")
         for d in open_days:
             table.add_row(
-                _site_name(d.site),
+                display_name(d.site),
                 d.date.isoformat(),
                 _STATUS_CN.get(d.status, d.status),
                 d.error or d.path or "",
@@ -694,7 +715,7 @@ def cmd_runs(args: argparse.Namespace) -> int:
             history.add_row(
                 str(item.get("run_id", "")),
                 str(item.get("started_at", "")),
-                "、".join(_site_name(str(s)) for s in item.get("sites") or []),
+                "、".join(display_name(str(s)) for s in item.get("sites") or []),
                 " · ".join(f"{_STATUS_CN.get(k, k)} {v}" for k, v in counts.items()),
             )
         console.print(history)

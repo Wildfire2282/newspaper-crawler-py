@@ -66,3 +66,9 @@ def lookup(key: str) -> Optional[SiteCrawler]:
         if lower in k.lower():
             return v
     return None
+
+
+def display_name(key: str) -> str:
+    """Human-readable name of a stored site key; the key itself when unknown."""
+    site = lookup(key)
+    return site.name if site else key

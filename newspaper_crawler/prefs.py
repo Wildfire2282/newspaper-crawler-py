@@ -32,11 +32,15 @@ def default_preferences() -> "Preferences":
     )
 
 
+def as_path(value: str, cwd: Path) -> Path:
+    """Resolve a stored or typed directory: expand ``~``, then relative -> ``cwd``."""
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else cwd / path
+
+
 def _relative_output_dir(value: str, cwd: Path) -> str:
     """Store a CWD-relative form when possible, so the file stays portable."""
-    path = Path(value).expanduser()
-    if not path.is_absolute():
-        return Path(value).as_posix()
+    path = as_path(value, cwd)
     try:
         return path.relative_to(cwd).as_posix()
     except ValueError:
@@ -89,8 +93,7 @@ class Preferences:
 
     def output_path(self, cwd: Path) -> Path:
         """``output_dir`` as a path, resolving a relative value against ``cwd``."""
-        path = Path(self.output_dir).expanduser()
-        return path if path.is_absolute() else cwd / path
+        return as_path(self.output_dir, cwd)
 
     def to_dict(self, cwd: Path) -> dict:
         return {
@@ -123,9 +126,7 @@ class Preferences:
             start, end = base.start_date, base.end_date
 
         out = _str(raw.get("output_dir"), base.output_dir)
-        path = Path(out).expanduser()
-        if not path.is_absolute():
-            path = cwd / path
+        path = as_path(out, cwd)
 
         workers = _int(raw.get("max_workers"), base.max_workers)
         site_workers = _int(raw.get("site_workers"), base.site_workers)

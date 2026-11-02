@@ -2,7 +2,7 @@
 
 import pytest
 
-from newspaper_crawler.registry import all_sites, lookup
+from newspaper_crawler.registry import all_sites, display_name, lookup
 
 
 def test_all_sites_sorted_by_name():
@@ -41,3 +41,8 @@ def test_lookup_accepts_prefix_and_substring():
     assert lookup("人").crawler_id == "rmrb"  # prefix
     assert lookup("光").crawler_id == "gmrb"
     assert lookup("民日报").crawler_id == "rmrb"  # substring
+
+
+def test_display_name_falls_back_to_the_key():
+    assert display_name("rmrb") == "人民日报"
+    assert display_name("gone") == "gone"  # unknown key shows as-is

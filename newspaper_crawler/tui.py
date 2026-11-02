@@ -24,7 +24,7 @@ from . import __version__ as VERSION
 from .models import OutputFormat
 from .output import make_console
 from .prefs import Preferences, default_preferences
-from .registry import all_sites, lookup
+from .registry import all_sites, display_name
 from .resume import ResumePlan, plan_resume, resume_days
 from .scheduler import run_multi
 from .state import StateStore
@@ -268,10 +268,7 @@ def start_download(prefs: Preferences, store: Optional[StateStore] = None) -> No
         console.print("[red]请先选择报纸（菜单 1）[/red]")
         return
 
-    site_names = []
-    for key in site_keys:
-        site = lookup(key)
-        site_names.append(site.name if site else key)
+    site_names = [display_name(key) for key in site_keys]
 
     output_dir = prefs.output_path(Path.cwd())
     fmt = OutputFormat.parse(prefs.output_format)

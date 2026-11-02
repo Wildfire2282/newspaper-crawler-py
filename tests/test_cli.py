@@ -20,6 +20,7 @@ from newspaper_crawler.cli import (
 )
 from newspaper_crawler.models import CrawlStats
 from newspaper_crawler.output import Progress, make_console
+from newspaper_crawler.prefs import Preferences
 from newspaper_crawler.scheduler import ProgressEvent
 from newspaper_crawler.state import DONE, FAILED, SKIPPED, StateStore
 
@@ -747,3 +748,45 @@ def test_plan_txt_reports_txt_paths(tmp_path, capsys):
 
     assert payload["format"] == "txt"
     assert payload["days"][0]["path"].endswith("2026-09-01.txt")
+
+
+def test_crawl_only_flags_come_from_the_stored_preferences():
+    prefs = Preferences(max_workers=12, fast_mode=True, skip_existing=False)
+
+    args = build_parser_with_defaults(prefs).parse_args(["crawl"])
+
+    assert (args.workers, args.fast, args.skip_existing) == (12, True, False)
+
+
+def test_explicit_crawl_flags_beat_the_stored_ones():
+    prefs = Preferences(max_workers=12, fast_mode=True, skip_existing=False)
+
+    args = build_parser_with_defaults(prefs).parse_args(
+        ["crawl", "--workers", "3", "--no-fast", "--skip-existing"]
+    )
+
+    assert (args.workers, args.fast, args.skip_existing) == (3, False, True)
+
+
+def test_a_run_remembers_concurrency_fast_and_skip(tmp_path, monkeypatch, capsys):
+    """The README promises these are reused; the parser must apply them next time."""
+    monkeypatch.setattr(
+        "newspaper_crawler.cli.run_multi", lambda keys, opts, **kw: CrawlStats()
+    )
+    assert (
+        main(
+            ["crawl", "--sites", "nope", "--workers", "12", "--fast",
+             "--no-skip-existing", "--quiet"]
+        )
+        == EXIT_ERROR  # unknown site, but the run still records its settings
+    )
+    capsys.readouterr()
+
+    args = build_parser_with_defaults().parse_args(["crawl"])
+    assert (args.workers, args.fast, args.skip_existing) == (12, True, False)
+
+
+def test_plan_rejects_crawl_only_flags():
+    with pytest.raises(SystemExit) as exc:
+        main(["plan", "--workers", "3"])
+    assert exc.value.code == 2
