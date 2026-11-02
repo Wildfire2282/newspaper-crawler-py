@@ -1,7 +1,4 @@
-"""Markdown / plain-text rendering.
-
-Mirrors Rust src-tauri/src/crawler/format.rs (Formatter).
-"""
+"""Markdown / plain-text rendering."""
 
 from __future__ import annotations
 

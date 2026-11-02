@@ -4,8 +4,6 @@ Base URL: http://paper.ce.cn/pc
 
 Layout page: {base}/layout/YYYYMM/DD/node_NN.html
 Article page: {base}/content/YYYYMM/DD/content_{cid}.html
-
-Mirrors Rust src-tauri/src/crawler/jjrb.rs.
 """
 
 from __future__ import annotations
@@ -32,9 +30,7 @@ def _edition_url(d: date, page: int) -> str:
 
 
 def _article_url(d: date, cid: str) -> str:
-    """Article page URL. ``cid`` is the raw captured string, never zero-padded
-    (mirrors Rust).
-    """
+    """Article page URL. ``cid`` is the raw captured string, never zero-padded."""
     return (
         f"{BASE_URL}/content/{d.year:04d}{d.month:02d}/{d.day:02d}/content_{cid}.html"
     )
@@ -106,7 +102,7 @@ def _get_editions(http: HttpSession, d: date) -> list[Edition]:
                 title = p.get_text().strip() if p is not None else a.get_text().strip()
                 if title:
                     articles.append(ArticleRef(title=title, url=_article_url(d, cid)))
-        # Mirrors Rust: a successfully fetched layout page is kept even with no articles.
+        # A successfully fetched layout page is kept even with no articles.
         editions.append(Edition(num=node, name=name, articles=articles))
     return editions
 

@@ -4,8 +4,6 @@ charset fallback.
 Retries are delegated to urllib3 ``Retry`` mounted through ``HTTPAdapter``: connect
 and read errors plus retryable status codes back off exponentially and honor the
 ``Retry-After`` header.
-
-Mirrors Rust src-tauri/src/crawler/http.rs (SafeRequest).
 """
 
 from __future__ import annotations
@@ -63,8 +61,8 @@ class HttpSession:
         self.max_bytes = max_bytes
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": user_agent})
-        # Connect timeout fixed at 5s (mirrors Rust connect_timeout); the second
-        # element of the timeout tuple is the read timeout, i.e. ``self.timeout``.
+        # Connect timeout fixed at 5s; the second element of the timeout tuple is
+        # the read timeout, i.e. ``self.timeout``.
         self.connect_timeout = 5.0
         adapter = self._build_adapter()
         self.session.mount("http://", adapter)

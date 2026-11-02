@@ -483,8 +483,8 @@ def test_rmrb_old_fetches_only_pages_found_in_nav():
 
 # ---------------------------------------------------------------- edition names
 # Live pages: the old People's Daily <title> is "人民日报-人民网" (no page info), and
-# the new Guangming .m-type is "01版:头版". Both used to produce a doubled label such
-# as "第01版 · 第01版" / "第01版 · 01版:头版".
+# the new Guangming .m-type is "01版:头版". A parsed name must not repeat the label that
+# edition_label already adds ("第01版 · 第01版" / "第01版 · 01版:头版" are wrong).
 
 
 def test_rmrb_old_edition_name_comes_from_the_page_banner():

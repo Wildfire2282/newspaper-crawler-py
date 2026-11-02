@@ -1,7 +1,5 @@
 """Global site registry.
 
-Mirrors Rust src-tauri/src/crawler/registry.rs.
-
 Contract:
 - ``all_sites()`` returns crawlers sorted by site name.
 - ``lookup()`` resolves a key by id / name / alias, case-insensitively, then by
@@ -59,7 +57,7 @@ def lookup(key: str) -> Optional[SiteCrawler]:
     for k, v in _MAP.items():
         if k.lower() == lower:
             return v
-    # Bidirectional prefix match (mirrors registry.rs).
+    # Bidirectional prefix match.
     for k, v in _MAP.items():
         kl = k.lower()
         if kl.startswith(lower) or lower.startswith(kl):

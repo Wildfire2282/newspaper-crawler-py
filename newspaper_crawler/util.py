@@ -1,7 +1,5 @@
 """Shared helpers: URL joining, title cleanup, meta extraction, weekday names, date
 parsing and crawl-option construction.
-
-Mirrors Rust src-tauri/src/crawler/util.rs and progress.rs (weekday_cn).
 """
 
 from __future__ import annotations
@@ -36,7 +34,7 @@ def make_soup(markup: str) -> BeautifulSoup:
 
 
 def join_url(base: str, href: str) -> str:
-    """Join a possibly-relative href onto base (mirrors Rust util::join_url)."""
+    """Join a possibly-relative href onto base."""
     if href.startswith(("http://", "https://")):
         return href
     return urljoin(base, href)

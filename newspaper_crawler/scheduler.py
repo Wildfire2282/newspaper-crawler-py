@@ -1,8 +1,4 @@
-"""Scheduler: per-day crawl loop, skip-existing, atomic writes, multi-site fan-out.
-
-Mirrors the message formats of Rust src-tauri/src/crawler/scheduler.rs and
-commands/crawl.rs.
-"""
+"""Scheduler: per-day crawl loop, skip-existing, atomic writes, multi-site fan-out."""
 
 from __future__ import annotations
 

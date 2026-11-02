@@ -678,7 +678,7 @@ def test_progress_keeps_bracketed_site_keys(capsys):
 
 
 def test_main_forces_utf8_output_on_a_legacy_locale(monkeypatch):
-    """On a non-Chinese locale (cp1252) the first line of output used to crash."""
+    """Output must survive a non-UTF-8 locale (cp1252) instead of raising."""
     import io
 
     buf = io.BytesIO()

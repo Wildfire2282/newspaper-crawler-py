@@ -1,7 +1,4 @@
-"""Core package of the newspaper downloader (pure-Python rewrite).
-
-Port of https://github.com/Wildfire2282/newspaper-crawler (Tauri/Rust).
-"""
+"""Core package of the newspaper downloader."""
 
 from importlib.metadata import PackageNotFoundError, version
 

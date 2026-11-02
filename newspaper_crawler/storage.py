@@ -1,7 +1,4 @@
-"""Atomic file writes: write to a temp sibling, then ``os.replace``; retry 3x.
-
-Mirrors Rust src-tauri/src/crawler/storage.rs.
-"""
+"""Atomic file writes: write to a temp sibling, then ``os.replace``; retry 3x."""
 
 from __future__ import annotations
 

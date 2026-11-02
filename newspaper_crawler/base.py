@@ -1,8 +1,4 @@
-"""Site crawler ABC and concurrent fetch helpers.
-
-Mirrors the Rust implementation (src-tauri/src/crawler/base.rs: SiteCrawler trait
-and BaseCrawler).
-"""
+"""Site crawler ABC and concurrent fetch helpers."""
 
 from __future__ import annotations
 
@@ -124,9 +120,9 @@ class BaseCrawler:
             raised.
 
         Note:
-            Concurrent mode (max_workers > 1) applies no inter-request delay, matching
-            the Rust implementation: per-host request rate is bounded by
-            ``max_workers`` alone. ``article_delay`` is honored only in serial mode.
+            Concurrent mode (max_workers > 1) applies no inter-request delay:
+            per-host request rate is bounded by ``max_workers`` alone. ``article_delay``
+            is honored only in serial mode.
         """
         editions = site.get_editions(http, d)
         if not editions:

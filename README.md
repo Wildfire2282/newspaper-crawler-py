@@ -1,8 +1,7 @@
 # 报刊下载器
 
 批量下载**人民日报、光明日报、经济日报、大众日报**电子版：按日期范围抓取当日全部版面与文章，
-输出 Markdown 或纯文本。是 [newspaper-crawler](https://github.com/Wildfire2282/newspaper-crawler)
-（Tauri + Rust 桌面版）的纯 Python 重构。
+输出 Markdown 或纯文本。
 
 ## 安装
 

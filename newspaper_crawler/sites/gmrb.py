@@ -5,8 +5,6 @@ Base URL: https://epaper.gmw.cn/gmrb
 Two upstream systems, selected by date:
 - new (d >= 2026-01-01): /gmrb/html/layout/YYYYMM/DD/node_NN.html
 - old (d <= 2025-12-31): /gmrb/html/YYYY-MM/DD/nbs.D110000gmrb_NN.htm
-
-Mirrors Rust src-tauri/src/crawler/gmrb.rs.
 """
 
 from __future__ import annotations
@@ -144,7 +142,7 @@ def _old_page_items(
     """Old-system layout page -> (page name, article references).
 
     Page name comes from <title> (第N版:版名), defaulting to 第{page_num:02d}版 when
-    absent (mirrors Rust). Articles are the anchors whose href contains
+    absent. Articles are the anchors whose href contains
     nw.D110000gmrb; an anchor's title is its text with <br> turned into a space.
     """
     name = f"第{page_num:02d}版"

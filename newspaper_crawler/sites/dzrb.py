@@ -3,8 +3,6 @@
 Base URL: https://paper.dzwww.com/dzrb
 
 A single index page (PageArticleIndexWZ.htm) carries every edition and article link.
-
-Mirrors Rust src-tauri/src/crawler/dzrb.rs.
 """
 
 from __future__ import annotations

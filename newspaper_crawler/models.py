@@ -1,4 +1,4 @@
-"""Unified data models (mirrors Rust src-tauri/src/crawler/model.rs)."""
+"""Unified data models."""
 
 from __future__ import annotations
 
@@ -112,7 +112,7 @@ class CrawlStats:
 
 @dataclass(slots=True)
 class CrawlOptions:
-    """Crawl configuration (mirrors Rust base.rs CrawlOptions)."""
+    """Crawl configuration."""
 
     start_date: date
     end_date: date

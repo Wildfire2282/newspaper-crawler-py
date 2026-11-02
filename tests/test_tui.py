@@ -270,7 +270,7 @@ def test_start_download_runs_fresh_when_the_resume_offer_is_declined(
 
 
 def test_handle_event_keeps_bracketed_site_keys(capsys):
-    """Bracketed ASCII keys look like rich markup and used to be dropped."""
+    """A bracketed ASCII key must be printed as-is, not parsed as rich markup."""
     tui.handle_event(
         ProgressEvent(
             kind="log", level="warn", site="rmrb", message="[rmrb] 未找到站点，已跳过"

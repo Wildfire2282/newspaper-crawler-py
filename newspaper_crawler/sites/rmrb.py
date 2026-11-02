@@ -5,8 +5,6 @@ Base URL: http://paper.people.com.cn/rmrb
 Two upstream systems, selected by date:
 - new (d >= 2024-12-01): /pc/layout/YYYYMM/DD/node_NN.html
 - old (d <= 2024-11-30): /html/YYYY-MM/DD/nbs.D110000renmrb_NN.htm
-
-Mirrors Rust src-tauri/src/crawler/rmrb.rs.
 """
 
 from __future__ import annotations
@@ -54,8 +52,7 @@ def _old_layout_url(d: date, page: int) -> str:
 def _old_article_refs(soup: BeautifulSoup, base: str) -> list[ArticleRef]:
     """Old-system layout page: collect anchors whose href contains nw.D110000renmrb.
 
-    Title = the anchor text with every <br> replaced by a space (mirrors the Rust
-    br-to-space-then-text behavior).
+    Title = the anchor text with every <br> replaced by a space.
 
     Note: mutates the matched anchors in place.
     """
