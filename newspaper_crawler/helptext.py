@@ -101,6 +101,6 @@ RUNS_EPILOG = """\
   last_run    {run_id, started_at, output_dir, format, stats, summary}
   open_days   [{site, date, status, path, error}]，status 为 pending 或 failed
   open_count  未完成条数（= len(open_days)）
-  history     [{run_id, started_at, sites, summary}]，最近 20 条
+  history     [{run_id, started_at, output_dir, format, sites, summary}]，最近 20 条
   state_file  账本文件路径"""
 

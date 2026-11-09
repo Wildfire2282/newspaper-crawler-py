@@ -312,3 +312,12 @@ def test_preferences_fields_cover_every_persisted_field():
     assert set(Preferences().fields()) == {
         f.name for f in dataclasses.fields(Preferences)
     }
+
+
+def test_run_ids_are_unique_within_the_same_second(tmp_path):
+    """Two runs started back-to-back must not share a run_id in the ledger."""
+    store = StateStore(tmp_path)
+    first = store.start_run(["rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+    second = store.start_run(["rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+
+    assert first.run_id != second.run_id

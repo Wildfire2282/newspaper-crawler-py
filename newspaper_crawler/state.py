@@ -243,8 +243,10 @@ class StateStore:
                     for current in _date_range(start, end)
                 ]
             now = datetime.now()
+            # Microsecond resolution: two runs started within the same second (e.g. a
+            # quick crawl followed by --resume) must not share a run_id in the ledger.
             self.last_run = RunRecord(
-                run_id=now.strftime("%Y%m%dT%H%M%S"),
+                run_id=now.strftime("%Y%m%dT%H%M%S.%f"),
                 started_at=now.isoformat(timespec="seconds"),
                 output_dir=str(output_dir),
                 fmt=fmt,

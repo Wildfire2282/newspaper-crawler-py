@@ -106,3 +106,27 @@ def test_anchors_dedupe_editions_not_just_articles():
     ed_anchors, _ = anchors(editions)
 
     assert ed_anchors == ["第01版-要闻", "第01版-要闻-1"]
+
+
+def test_empty_title_anchor_matches_its_heading():
+    """An untitled article's TOC link must point at its 「（无标题）」 heading.
+
+    The heading text is 「（无标题）」, whose anchor slug is ``无标题``; keying the
+    anchor off the md_anchor fallback (``section``) would emit a dangling link.
+    """
+    for item in (ArticleRef(title="", url="http://example.com/a"), Article(title="", paragraphs=["p"])):
+        editions = [Edition(num=1, name="要闻", articles=[item])]
+        md = Formatter("人民日报", "http://example.com").markdown(D, editions)
+        assert "  - [（无标题）](#无标题)" in md
+        assert "### （无标题）" in md
+        assert "#section" not in md
+
+
+def test_plain_reports_empty_title():
+    editions = [
+        Edition(num=1, name="要闻", articles=[ArticleRef(title="", url="http://example.com/a")])
+    ]
+
+    txt = Formatter("人民日报", "http://example.com").plain(D, editions)
+
+    assert "■ （无标题）" in txt

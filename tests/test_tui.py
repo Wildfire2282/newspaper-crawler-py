@@ -1,5 +1,6 @@
 """tui tests: event rendering, site-selection parsing, preference persistence."""
 
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -339,3 +340,20 @@ def test_choose_output_dir_normalizes_and_persists(tmp_path, monkeypatch):
     assert StateStore(tmp_path).preferences.output_path(tmp_path) == Path(
         prefs.output_dir
     )
+
+
+def test_run_forces_utf8_output_on_a_legacy_locale(monkeypatch):
+    """The menu must survive a non-UTF-8 locale even when invoked directly."""
+    import io
+
+    buf = io.BytesIO()
+    stdout = io.TextIOWrapper(buf, encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", stdout)
+    monkeypatch.setattr(tui, "main_loop", lambda *a, **k: None)
+    try:
+        assert tui.run() == 0
+        stdout.flush()
+    finally:
+        monkeypatch.undo()
+
+    assert "报刊下载器" in buf.getvalue().decode("utf-8")

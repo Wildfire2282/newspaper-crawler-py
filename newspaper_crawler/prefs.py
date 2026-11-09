@@ -4,8 +4,10 @@ Contract:
 - defaults come from :func:`default_preferences`;
 - loading never raises: every unusable stored field keeps its default
   (see :meth:`Preferences.from_dict`);
-- ``output_dir`` is an absolute POSIX string in memory and is written back in a
-  CWD-relative form when possible, so the file stays portable.
+- ``output_dir`` is a POSIX string in memory, absolute once resolved against the
+  working directory (the built-in default ``downloads`` is the one relative
+  exception), and is written back in a CWD-relative form when possible so the file
+  stays portable.
 
 The file format (ledger + preferences) is owned by :mod:`newspaper_crawler.state`.
 """

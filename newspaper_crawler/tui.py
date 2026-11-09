@@ -22,7 +22,7 @@ from rich.text import Text
 
 from . import __version__ as VERSION
 from .models import OutputFormat
-from .output import make_console
+from .output import force_utf8_output, make_console
 from .prefs import Preferences, default_preferences
 from .registry import all_sites, display_name
 from .resume import ResumePlan, plan_resume, resume_days
@@ -432,6 +432,9 @@ def run() -> int:
     The menu edits the stored :class:`Preferences` in place and saves them as they
     change, so it reopens where it was left off.
     """
+    # Same guarantee as the CLI entry point: Chinese output must survive a legacy
+    # locale even when the menu is invoked directly instead of through ``main``.
+    force_utf8_output()
     configure_logging()
     try:
         store = StateStore()

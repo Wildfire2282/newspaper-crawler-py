@@ -101,12 +101,12 @@ class Formatter:
                 continue
             for art in ed.articles:
                 if not is_full(art):
-                    out += f"  ■ {art_title(art)}\n"
+                    out += f"  ■ {art_title(art) or '（无标题）'}\n"
                     out += FETCH_FAILED_TXT
                     continue
                 if art.yinti:
                     out += f"  [{art.yinti}]\n"
-                out += f"  ■ {art.title}\n"
+                out += f"  ■ {art.title or '（无标题）'}\n"
                 if art.subtitle:
                     out += f"    [{art.subtitle}]\n"
                 if art.author:
@@ -158,8 +158,10 @@ def anchors(
 
         arts: list[str] = []
         for item in ed.articles:
-            title = art_title(item)
-            key = "section" if not title else title
+            # The heading text is "（无标题）" when the title is empty, so the anchor
+            # key must be that same text; using the md_anchor fallback ("section")
+            # here would emit a TOC link that matches no heading.
+            key = art_title(item) or "（无标题）"
             a = md_anchor(key)
             n = seen_art.get(a, 0)
             arts.append(a if n == 0 else f"{a}-{n}")
