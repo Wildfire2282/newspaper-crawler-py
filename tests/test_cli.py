@@ -213,8 +213,70 @@ def test_plan_marks_existing_file_as_skip(tmp_path, capsys):
         == EXIT_OK
     )
     payload = json.loads(capsys.readouterr().out)
+    assert payload["skip_existing"] is True
     assert payload["summary"] == {"fetch": 0, "skip": 1}
     assert payload["days"][0]["exists"] is True
+    assert payload["days"][0]["action"] == "skip"
+
+
+def test_plan_no_skip_existing_marks_the_existing_day_for_fetch(tmp_path, capsys):
+    """A dry run must predict the crawl it describes: --no-skip-existing refetches."""
+    target = tmp_path / "人民日报" / "2026" / "09" / "2026-09-01.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("x", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "plan",
+                "--sites",
+                "rmrb",
+                "--start",
+                "2026-09-01",
+                "--end",
+                "2026-09-01",
+                "-o",
+                str(tmp_path),
+                "--no-skip-existing",
+                "--json",
+            ]
+        )
+        == EXIT_OK
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["skip_existing"] is False
+    assert payload["summary"] == {"fetch": 1, "skip": 0}
+    assert payload["days"][0]["exists"] is True
+    assert payload["days"][0]["action"] == "fetch"
+
+
+def test_plan_reads_the_stored_skip_existing_preference(tmp_path, capsys):
+    """An omitted flag follows the same stored preference crawl follows."""
+    StateStore().save_preferences(skip_existing=False)
+    target = tmp_path / "人民日报" / "2026" / "09" / "2026-09-01.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("x", encoding="utf-8")
+
+    assert (
+        main(
+            [
+                "plan",
+                "--sites",
+                "rmrb",
+                "--start",
+                "2026-09-01",
+                "--end",
+                "2026-09-01",
+                "-o",
+                str(tmp_path),
+                "--json",
+            ]
+        )
+        == EXIT_OK
+    )
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["skip_existing"] is False
+    assert payload["days"][0]["action"] == "fetch"
 
 
 def test_plan_unknown_site_returns_error(tmp_path, capsys):
@@ -262,7 +324,14 @@ def test_subcommand_help_documents_params_and_json_fields(capsys):
     assert "不影响 ok" in crawl and "total_errors" in crawl
 
     plan = _help(capsys, ["plan", "--help"])
-    for token in ["--sites", "days", "summary", "退出码 1"]:
+    for token in [
+        "--sites",
+        "--no-skip-existing",
+        "skip_existing",
+        "days",
+        "summary",
+        "退出码 1",
+    ]:
         assert token in plan, f"plan 帮助缺少: {token}"
 
     sites = _help(capsys, ["sites", "--help"])
@@ -545,6 +614,24 @@ def test_crawl_resume_reruns_only_the_open_days(tmp_path, monkeypatch, capsys):
 
     # The resumed run replaced the ledger and left nothing open.
     assert StateStore().open_days() == []
+
+
+def test_plan_resume_no_skip_existing_refetches_an_existing_open_day(tmp_path, capsys):
+    """The resume branch applies the same skip rule as a normal plan."""
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("rmrb",))
+    store.record_day("rmrb", date(2026, 9, 1), FAILED)
+    target = tmp_path / "人民日报" / "2026" / "09" / "2026-09-01.md"
+    target.parent.mkdir(parents=True)
+    target.write_text("x", encoding="utf-8")
+
+    assert main(["plan", "--resume", "--no-skip-existing", "--json"]) == EXIT_OK
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["resumed"] is True
+    assert payload["skip_existing"] is False
+    assert payload["days"][0]["action"] == "fetch"
+    assert payload["summary"] == {"fetch": 1, "skip": 0}
 
 
 def test_plan_resume_lists_only_open_days(tmp_path, capsys):

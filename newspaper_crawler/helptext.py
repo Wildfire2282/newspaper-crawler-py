@@ -38,19 +38,23 @@ SITES_EPILOG = """\
 
 PLAN_EPILOG = """\
 不联网、不写盘：按输出目录中已存在的文件或上次运行的账本，判断每个「站点 × 日期」
-将抓取还是跳过。
+将抓取还是跳过。是否跳过已存在的文件由 --skip-existing / --no-skip-existing 决定，
+默认沿用上次运行的取值，与 crawl 一致。
 
 示例:
   crawler plan --sites rmrb --start 2026-09-01 --end 2026-09-03
   crawler plan --sites all --json
+  crawler plan --sites all --no-skip-existing --json   # 预演全部重抓
   crawler plan --resume --json                  # 只预演上次未完成的日期
 
 --resume:
   只处理上次运行中仍为 pending（中断）或 failed（失败）的日期；无账本时报错退出（退出码 1）。
-  续传按账本执行，--sites/--start/--end/-o/-f 一律忽略（用账本记录的值）。
+  续传按账本执行，--sites/--start/--end/-o/-f 一律忽略（用账本记录的值）；
+  是否跳过已存在的文件仍由 --skip-existing / --no-skip-existing 决定。
 
 --json 输出字段:
-  sites / unknown_sites / start_date / end_date / output_dir / format / resumed
+  sites / unknown_sites / start_date / end_date / output_dir / format / skip_existing /
+  resumed
   days     [{site, date, path, exists, status, action}]，action 为 fetch 或 skip；
            status 为账本状态（pending/failed/done/skipped/empty），非续传时为 null
   summary  {"fetch": N, "skip": N}"""
@@ -103,4 +107,3 @@ RUNS_EPILOG = """\
   open_count  未完成条数（= len(open_days)）
   history     [{run_id, started_at, output_dir, format, sites, summary}]，最近 20 条
   state_file  账本文件路径"""
-

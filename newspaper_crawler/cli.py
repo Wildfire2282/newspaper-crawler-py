@@ -100,6 +100,22 @@ def _add_download_args(parser: argparse.ArgumentParser) -> None:
         default=argparse.SUPPRESS,
         help="并发站点数（不同站点互不影响请求频率，默认 4）",
     )
+    # Shared because ``plan`` predicts the same skip/fetch decision ``crawl`` makes;
+    # keeping the flag crawl-only is what let a dry run contradict the real run.
+    parser.add_argument(
+        "--skip-existing",
+        dest="skip_existing",
+        action="store_true",
+        default=argparse.SUPPRESS,
+        help="跳过已下载日期（默认开启，或上次使用的值）",
+    )
+    parser.add_argument(
+        "--no-skip-existing",
+        dest="skip_existing",
+        action="store_false",
+        default=argparse.SUPPRESS,
+        help="不跳过已下载日期，重新抓取",
+    )
 
 
 def _set_download_defaults(
@@ -119,20 +135,22 @@ def _set_download_defaults(
         output_dir=prefs.output_dir,
         fmt=prefs.output_format,
         site_workers=prefs.site_workers,
+        skip_existing=prefs.skip_existing,
     )
     for subparser in subparsers:
         subparser.set_defaults(**values)
 
 
 def _set_crawl_defaults(parser: argparse.ArgumentParser, prefs: Preferences) -> None:
-    """Install the crawl-only defaults (concurrency and politeness) the user left out.
+    """Install the crawl-only defaults (worker count and fast mode).
 
-    ``plan`` does not fetch anything, so it has no such flags.
+    ``skip_existing`` is shared with ``plan`` (it predicts the same decision) and is
+    installed by :func:`_set_download_defaults`; ``plan`` fetches nothing, so it has
+    no workers/fast flags.
     """
     parser.set_defaults(
         workers=prefs.max_workers,
         fast=prefs.fast_mode,
-        skip_existing=prefs.skip_existing,
     )
 
 
@@ -224,20 +242,6 @@ def build_parser(prefs: Optional[Preferences] = None) -> argparse.ArgumentParser
         action="store_false",
         default=argparse.SUPPRESS,
         help="关闭快速模式（覆盖上次记住的值）",
-    )
-    p_crawl.add_argument(
-        "--skip-existing",
-        dest="skip_existing",
-        action="store_true",
-        default=argparse.SUPPRESS,
-        help="跳过已下载日期（默认开启，或上次使用的值）",
-    )
-    p_crawl.add_argument(
-        "--no-skip-existing",
-        dest="skip_existing",
-        action="store_false",
-        default=argparse.SUPPRESS,
-        help="不跳过已下载日期，重新抓取",
     )
     p_crawl.add_argument(
         "--resume", action="store_true", help="按账本只重跑上次未完成的日期"
@@ -432,6 +436,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
     if args.resume and plan is None:
         print("错误：没有可续传的任务。", file=sys.stderr)
         return EXIT_ERROR
+    # The dry run must apply the same skip rule the crawl will use. The parser
+    # installs the stored preference; the getattr keeps direct library callers sane.
+    skip_existing = getattr(args, "skip_existing", True)
 
     if plan is not None:
         # Resume mode is ledger-driven: the work is exactly the open (site, date)
@@ -447,14 +454,15 @@ def cmd_plan(args: argparse.Namespace) -> int:
             if site is None:  # filtered by plan_resume; keeps the type checker honest
                 continue
             path = site.day_filepath(entry.date, output_dir, fmt.ext())
+            exists = path.exists()
             days.append(
                 {
                     "site": site.name,
                     "date": entry.date.isoformat(),
                     "path": str(path),
-                    "exists": path.exists(),
+                    "exists": exists,
                     "status": entry.status,
-                    "action": "skip" if path.exists() else "fetch",
+                    "action": "skip" if skip_existing and exists else "fetch",
                 }
             )
         site_names = "、".join(display_name(k) for k in keys) or "（无）"
@@ -474,14 +482,15 @@ def cmd_plan(args: argparse.Namespace) -> int:
                 path = site.day_filepath(
                     current, settings.output_dir, settings.fmt.ext()
                 )
+                exists = path.exists()
                 days.append(
                     {
                         "site": site.name,
                         "date": current.isoformat(),
                         "path": str(path),
-                        "exists": path.exists(),
+                        "exists": exists,
                         "status": None,
-                        "action": "skip" if path.exists() else "fetch",
+                        "action": "skip" if skip_existing and exists else "fetch",
                     }
                 )
                 current += timedelta(days=1)
@@ -496,6 +505,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         "end_date": end.isoformat(),
         "output_dir": str(output_dir),
         "format": fmt.ext(),
+        "skip_existing": skip_existing,
         "resumed": bool(args.resume),
         "days": days,
         "summary": {"fetch": fetch, "skip": skip},
@@ -508,7 +518,8 @@ def cmd_plan(args: argparse.Namespace) -> int:
             f"站点：{site_names}\n"
             f"日期：{result['start_date']} ~ {result['end_date']}\n"
             f"输出目录：{output_dir}\n"
-            f"将抓取 {fetch} 天 · 将跳过 {skip} 天"
+            f"将抓取 {fetch} 天 · 将跳过 {skip} 天 · "
+            f"断点续传：{'开' if skip_existing else '关'}"
         )
         for item in days:
             if item["action"] == "fetch":
