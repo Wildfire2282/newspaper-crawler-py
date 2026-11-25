@@ -28,7 +28,7 @@ from .helptext import (
     RUNS_EPILOG,
     SITES_EPILOG,
 )
-from .models import OutputFormat
+from .models import CrawlStats, OutputFormat
 from .output import Progress, emit_json, force_utf8_output, make_console
 from .prefs import Preferences, as_path
 from .registry import all_sites, display_name, lookup
@@ -581,6 +581,34 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     if unknown:
         print(f"警告：无法识别的站点：{'、'.join(unknown)}", file=sys.stderr)
 
+    # Nothing to crawl: report the failure without touching the ledger, so a typo in
+    # --sites cannot erase the open days a previous run left for --resume.
+    if not keys:
+        stats = CrawlStats()
+        result = {
+            "ok": False,
+            "sites": [],
+            "unknown_sites": unknown,
+            "start_date": start.isoformat(),
+            "end_date": end.isoformat(),
+            "output_dir": str(output_dir),
+            "format": fmt.ext(),
+            "elapsed_secs": 0.0,
+            "resumed": plan is not None,
+            "stats": stats.as_dict(),
+            "files": [],
+            "skipped": [],
+            "errors": progress.errors,
+            "warnings": progress.warnings,
+        }
+        if args.json:
+            emit_json(result)
+        else:
+            out = make_console()
+            out.print(f"完成 · {stats}")
+            out.print(f"输出目录：{output_dir}")
+        return EXIT_ERROR
+
     # The ledger is written before the crawl starts, so an interruption still leaves
     # the remaining days recorded as pending.
     if plan is not None:
@@ -773,6 +801,11 @@ def _run_subcommand(argv: list[str]) -> int:
     try:
         return args.func(args)
     except KeyboardInterrupt:
+        if getattr(args, "json", False):
+            # Keep the one-JSON-object contract: stdout gets the error, nothing else.
+            print("已中断。", file=sys.stderr)
+            emit_json({"ok": False, "error": "已中断"})
+            return EXIT_INTERRUPTED
         raise  # main() turns it into exit code 130 with its own message
     except Exception as exc:  # noqa: BLE001 - the CLI must not die with a traceback
         # A handler crash is a runtime failure like any other: same exit code, same

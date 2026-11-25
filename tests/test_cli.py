@@ -299,6 +299,27 @@ def test_crawl_unknown_site_returns_error_without_network(capsys):
     assert payload["stats"]["days_attempted"] == 0
 
 
+def test_crawl_unknown_only_preserves_previous_ledger(tmp_path, capsys):
+    """A typo in --sites must not erase the open days a --resume needs."""
+    store = StateStore()
+    _record_run(store, tmp_path, status=FAILED)
+    run_id = store.last_run.run_id
+
+    assert main(["crawl", "--sites", "nope", "--json", "--quiet"]) == EXIT_ERROR
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["ok"] is False
+    assert payload["unknown_sites"] == ["nope"]
+    assert payload["warnings"] == [
+        {"site": "nope", "date": None, "message": "无法识别的站点：nope"}
+    ]
+
+    reloaded = StateStore()
+    assert reloaded.last_run.run_id == run_id
+    assert [(d.site, d.date.isoformat()) for d in reloaded.open_days()] == [
+        ("rmrb", "2026-09-01")
+    ]
+
+
 def test_crawl_unknown_site_warns_while_known_sites_still_run(
     monkeypatch, tmp_path, capsys
 ):
@@ -931,6 +952,38 @@ def test_crawl_interrupt_still_closes_the_ledger(tmp_path, monkeypatch, capsys):
     assert [d.status for d in store.open_days()] == ["pending"]  # still resumable
 
 
+def test_crawl_interrupt_emits_json_and_closes_ledger(tmp_path, monkeypatch, capsys):
+    """Ctrl+C under --json keeps the one-object contract and still closes the ledger."""
+
+    def interrupted(keys, opts, on_event, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", interrupted)
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-01",
+            "-o",
+            str(tmp_path),
+            "--json",
+            "--quiet",
+        ]
+    )
+    captured = capsys.readouterr()
+
+    assert code == 130
+    assert json.loads(captured.out) == {"ok": False, "error": "已中断"}
+    assert "已中断" in captured.err
+    assert "Traceback" not in captured.err
+    store = StateStore()
+    assert store.history[0]["run_id"] == store.last_run.run_id
+
+
 def test_runs_survives_a_ledger_with_an_unknown_status(tmp_path, capsys):
     store = StateStore()
     _record_run(store, tmp_path)
@@ -1063,7 +1116,13 @@ def test_a_run_remembers_concurrency_fast_and_skip(tmp_path, monkeypatch, capsys
             [
                 "crawl",
                 "--sites",
-                "nope",
+                "rmrb",
+                "--start",
+                "2026-09-01",
+                "--end",
+                "2026-09-01",
+                "-o",
+                str(tmp_path),
                 "--workers",
                 "12",
                 "--fast",
@@ -1071,7 +1130,7 @@ def test_a_run_remembers_concurrency_fast_and_skip(tmp_path, monkeypatch, capsys
                 "--quiet",
             ]
         )
-        == EXIT_ERROR  # unknown site, but the run still records its settings
+        == EXIT_OK
     )
     capsys.readouterr()
 
