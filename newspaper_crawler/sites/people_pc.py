@@ -1,12 +1,13 @@
 """Shared parsers for People's Daily "pc" e-paper sites.
 
-Four crawlers on paper.people.com.cn share this template family:
+Five crawlers on paper.people.com.cn share this template family:
 
 - magazine layout (rmlt / rmzk / zgjjzk): ``node_01`` already lists every edition
   as ``div.news h1`` (edition name) followed by ``ul#NN`` with that edition's
   article links, so one layout request discovers the whole issue.
-- newspaper layout (rmrbhwb): one edition per ``node_NN.html``; the page
-  navigation carries "NN版：NAME" for every edition of the issue.
+- newspaper layout (rmrbhwb, and rmrb from 2024-12-01): one edition per
+  ``node_NN.html``; the page navigation carries "NN版：NAME" for every edition of
+  the issue.
 
 Both layouts serve the same article page: ``div.article`` (h3 引题, h1 标题,
 h2 副标题, p.sec 作者 + span.date) and ``div#ozoom`` body paragraphs.
@@ -132,9 +133,18 @@ def get_node_editions(http: HttpSession, base_url: str, d: date) -> list[Edition
     editions: list[Edition] = []
     for num, name, body in results:
         edoc = make_soup(body)
-        scope = edoc.select_one("div.news") or edoc
+        news = edoc.select_one("div.news")
+        # The real template nests links in div.news > ul > li. A reduced page
+        # without that container still exposes its content anchors directly; only
+        # then fall back to the whole page. Scoping when div.news exists keeps its
+        # "PDF下载" mirrors from duplicating real articles.
+        anchors = (
+            news.select("ul li a[href]")
+            if news is not None
+            else edoc.find_all("a", href=True)
+        )
         articles: list[ArticleRef] = []
-        for a in scope.select("ul li a[href]"):
+        for a in anchors:
             href = str(a.get("href", ""))
             title = a.get_text().strip()
             if href and title and RE_CONTENT_HREF.search(href):
@@ -177,6 +187,10 @@ def fetch_pc_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
             if date_span is not None:
                 date_span.extract()
             author = " ".join(sec.get_text().split())
+            # Some pages leave the publication citation in the same line without
+            # a date span; the byline is everything before "《".
+            if "《" in author:
+                author = author[: author.index("《")].strip()
 
     # Title fallback chain: h1 -> <title> -> reference title, then strip a
     # "-人民网"-style suffix.
