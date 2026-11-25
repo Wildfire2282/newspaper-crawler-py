@@ -18,10 +18,11 @@ from urllib3.util.retry import Retry
 
 DEFAULT_TIMEOUT = 30
 DEFAULT_MAX_RETRIES = 3
-# Per-page response cap, enforcing only when the server sends a Content-Length.
-# shortcut: a chunked response without that header is read whole, unbounded; stream
-# and count the bytes here if untrusted hosts are ever added.
+# Per-page response cap, enforced while the body is read. Content-Length is only a
+# fast reject: chunked or lying responses are counted the same way before decoding.
 DEFAULT_MAX_BYTES = 5 * 1024 * 1024
+# Read granularity for the capped body; large enough to keep syscall overhead low.
+READ_CHUNK_SIZE = 64 * 1024
 # Requests one host may see from us at once. Callers that fan out (fetch_texts) read
 # this budget from the session, so ``--workers`` is the single concurrency knob.
 DEFAULT_CONCURRENCY = 8
@@ -96,37 +97,81 @@ class HttpSession:
         )
 
     def get(self, url: str, silent_404: bool = False) -> Optional[requests.Response]:
-        """GET ``url``.
+        """GET ``url`` and cache its capped body on the returned response.
 
         Returns:
-            The response only for HTTP 200. None for any other status, for a transport
-            error after retries are exhausted, or for a body exceeding ``max_bytes``
-            (in which case the connection is released without reading the body).
+            The response only for HTTP 200 with a body within ``max_bytes``. None for
+            any other status, for a transport error after retries are exhausted, for
+            a body that exceeds the cap while being read, or for a connection that
+            drops mid-body. Failures release the connection.
 
         Args:
             silent_404: suppress the warning log for HTTP 404.
         """
         try:
-            resp = self.session.get(url, timeout=(self.connect_timeout, self.timeout))
+            resp = self.session.get(
+                url, timeout=(self.connect_timeout, self.timeout), stream=True
+            )
         except requests.RequestException as exc:  # Raised only after retries exhausted.
             log.error("请求失败 [%s]: %s", url, exc)
             return None
 
-        if resp.status_code == 200:
-            length = resp.headers.get("Content-Length")
-            if length is not None and length.isdigit() and int(length) > self.max_bytes:
-                log.warning(
-                    "响应体过大（%s 字节 > 上限 %s），已跳过 [%s]",
-                    length,
-                    self.max_bytes,
-                    url,
-                )
-                resp.close()
-                return None
-            return resp
-        if not (silent_404 and resp.status_code == 404):
-            log.warning("HTTP %s [%s]", resp.status_code, url)
-        return None
+        if resp.status_code != 200:
+            resp.close()
+            if not (silent_404 and resp.status_code == 404):
+                log.warning("HTTP %s [%s]", resp.status_code, url)
+            return None
+
+        # Fast path: reject on the declared size before touching the body. The body
+        # read below enforces the same cap when the header is absent or wrong.
+        length = resp.headers.get("Content-Length")
+        if length is not None and length.isdigit() and int(length) > self.max_bytes:
+            log.warning(
+                "响应体过大（%s 字节 > 上限 %s），已跳过 [%s]",
+                length,
+                self.max_bytes,
+                url,
+            )
+            resp.close()
+            return None
+
+        body = self._read_body(url, resp)
+        if body is None:
+            return None
+        # The stream has been consumed; cache the bytes so Response.content (used by
+        # ``_decode`` and by external callers) does not try to read it again.
+        resp._content = body
+        resp._content_consumed = True
+        return resp
+
+    def _read_body(self, url: str, resp: requests.Response) -> Optional[bytes]:
+        """Read and cap the body; a read failure or overflow maps to None.
+
+        The connection is closed on either failure. Catches requests' own read
+        exceptions (chunked-encoding, connection, decoding), which would otherwise
+        escape through ``get_text`` as an uncaught crawl error.
+        """
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            for chunk in resp.iter_content(chunk_size=READ_CHUNK_SIZE):
+                if not chunk:
+                    continue
+                total += len(chunk)
+                if total > self.max_bytes:
+                    log.warning(
+                        "响应体过大（超过上限 %s 字节），已跳过 [%s]",
+                        self.max_bytes,
+                        url,
+                    )
+                    resp.close()
+                    return None
+                chunks.append(chunk)
+        except requests.RequestException as exc:
+            log.error("读取响应失败 [%s]: %s", url, exc)
+            resp.close()
+            return None
+        return b"".join(chunks)
 
     def get_text(self, url: str, silent_404: bool = False) -> Optional[str]:
         """Return the decoded body, or None if the request failed."""

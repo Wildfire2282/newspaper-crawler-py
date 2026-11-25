@@ -84,6 +84,24 @@ def test_fetch_texts_uses_cache_and_skips_cached_urls():
     assert http2.calls == []
 
 
+def test_fetch_texts_isolates_a_page_that_raises():
+    """One broken page must not abort discovery of the other editions."""
+
+    class _FlakyHttp:
+        concurrency = 8
+
+        def get_text(self, url, silent_404=False):
+            if url == "b":
+                raise RuntimeError("boom")
+            return url.upper()
+
+    assert fetch_texts(_FlakyHttp(), ["a", "b", "c"], silent_404=True) == [
+        "A",
+        None,
+        "C",
+    ]
+
+
 def test_fetch_texts_dedupes_duplicate_urls():
     calls: list[str] = []
 

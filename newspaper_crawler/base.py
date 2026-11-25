@@ -52,12 +52,18 @@ def fetch_texts(
     if cache is None:
         cache = {}
     pending = list(dict.fromkeys(u for u in urls if u not in cache))
+
+    def fetch_one(url: str) -> Optional[str]:
+        try:
+            return http.get_text(url, silent_404=silent_404)
+        except Exception as exc:  # One page must not abort the other editions.
+            log.warning("抓取页面出错 [%s]: %s", url, exc)
+            return None
+
     if pending:
         workers = max_workers if max_workers is not None else http.concurrency
         with ThreadPoolExecutor(max_workers=min(workers, len(pending))) as pool:
-            fetched = pool.map(
-                lambda u: http.get_text(u, silent_404=silent_404), pending
-            )
+            fetched = pool.map(fetch_one, pending)
             for url, body in zip(pending, fetched):
                 if body is not None:
                     cache[url] = body

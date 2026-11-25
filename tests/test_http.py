@@ -22,12 +22,20 @@ class _Resp:
         content: bytes = b"",
         headers: dict | None = None,
         apparent_encoding: str | None = None,
+        read_error: Exception | None = None,
     ):
         self.status_code = status_code
         self.content = content
         self.headers = headers or {}
         self.apparent_encoding = apparent_encoding
+        self.read_error = read_error
         self.closed = False
+
+    def iter_content(self, chunk_size: int = 1):
+        if self.read_error is not None:
+            raise self.read_error
+        for start in range(0, len(self.content), chunk_size):
+            yield self.content[start : start + chunk_size]
 
     def close(self) -> None:
         self.closed = True
@@ -129,6 +137,41 @@ def test_get_ignores_unparseable_content_length(monkeypatch):
     monkeypatch.setattr(http.session, "get", lambda *a, **k: resp)
 
     assert http.get("http://example.com") is resp
+
+
+def test_get_text_rejects_an_oversized_chunked_body(monkeypatch, caplog):
+    """The cap must hold when the server sends no Content-Length at all.
+
+    The header check is only a fast path; a chunked or lying response must still
+    be bounded before it is decoded into memory.
+    """
+    http = HttpSession(max_bytes=10)
+    resp = _Resp(200, b"x" * 11)
+    monkeypatch.setattr(http.session, "get", lambda *a, **k: resp)
+
+    with caplog.at_level(logging.WARNING, logger="newspaper"):
+        assert http.get_text("http://example.com") is None
+
+    assert resp.closed is True
+    assert any("响应体过大" in record.message for record in caplog.records)
+
+
+def test_get_text_maps_a_body_read_error_to_none(monkeypatch, caplog):
+    """A connection dropping mid-body is a failed page, not an exception callers see."""
+    http = HttpSession()
+    resp = _Resp(
+        200,
+        read_error=requests.exceptions.ChunkedEncodingError(
+            "connection dropped mid-body"
+        ),
+    )
+    monkeypatch.setattr(http.session, "get", lambda *a, **k: resp)
+
+    with caplog.at_level(logging.ERROR, logger="newspaper"):
+        assert http.get_text("http://example.com") is None
+
+    assert resp.closed is True
+    assert any("读取响应失败" in record.message for record in caplog.records)
 
 
 # ---------------------------------------------------------------- decode fallback chain
