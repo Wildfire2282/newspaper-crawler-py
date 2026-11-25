@@ -8,7 +8,16 @@ from newspaper_crawler.registry import all_sites, display_name, lookup
 def test_all_sites_sorted_by_name():
     names = [s.name for s in all_sites()]
     assert names == sorted(names)
-    assert set(names) == {"人民日报", "光明日报", "经济日报", "大众日报"}
+    assert set(names) == {
+        "人民日报",
+        "人民日报海外版",
+        "人民周刊",
+        "人民论坛",
+        "中国经济周刊",
+        "光明日报",
+        "经济日报",
+        "大众日报",
+    }
 
 
 @pytest.mark.parametrize(
@@ -19,6 +28,20 @@ def test_all_sites_sorted_by_name():
         ("人民日报", "rmrb"),
         ("人民", "rmrb"),
         ("renmin", "rmrb"),
+        ("rmlt", "rmlt"),
+        ("人民论坛", "rmlt"),
+        ("论坛", "rmlt"),
+        ("luntan", "rmlt"),
+        ("rmzk", "rmzk"),
+        ("人民周刊", "rmzk"),
+        ("zk", "rmzk"),
+        ("rmrbhwb", "rmrbhwb"),
+        ("人民日报海外版", "rmrbhwb"),
+        ("海外版", "rmrbhwb"),
+        ("hwb", "rmrbhwb"),
+        ("zgjjzk", "zgjjzk"),
+        ("中国经济周刊", "zgjjzk"),
+        ("jjzk", "zgjjzk"),
         ("gmrb", "gmrb"),
         ("光明日报", "gmrb"),
         ("jjrb", "jjrb"),

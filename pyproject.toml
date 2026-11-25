@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "newspaper-crawler"
 version = "3.2.0"
-description = "人民日报 / 光明日报 / 经济日报 / 大众日报电子报批量下载"
+description = "人民日报 / 人民日报海外版 / 人民周刊 / 人民论坛 / 中国经济周刊 / 光明日报 / 经济日报 / 大众日报电子报批量下载"
 readme = "README.md"
 requires-python = ">=3.12"
 license = "MIT"

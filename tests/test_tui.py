@@ -116,7 +116,7 @@ def test_choose_sites_persists_the_selection(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
     prefs = tui.default_preferences()
 
-    _answer(monkeypatch, asks=["1"])
+    _answer(monkeypatch, asks=["3"])  # 人民日报 sits third in the name-sorted menu
     tui.choose_sites(prefs, store)
 
     assert prefs.site_keys == ["rmrb"]
@@ -170,7 +170,9 @@ def test_start_download_offers_to_resume_open_days(tmp_path, monkeypatch):
     assert StateStore(tmp_path).open_days() == []
 
 
-def test_start_download_skips_the_resume_prompt_when_nothing_is_open(tmp_path, monkeypatch):
+def test_start_download_skips_the_resume_prompt_when_nothing_is_open(
+    tmp_path, monkeypatch
+):
     store = StateStore(tmp_path)
     store.start_run(["rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
     store.record_day("rmrb", date(2026, 9, 1), SKIPPED)
@@ -190,9 +192,6 @@ def test_start_download_skips_the_resume_prompt_when_nothing_is_open(tmp_path, m
 
     assert prompts == ["确认开始下载？"]  # no resume offer
     assert len(ran) == 1  # proceeded to a fresh run instead
-
-
-
 
 
 def test_run_crawl_closes_the_ledger_on_interrupt(tmp_path, monkeypatch, capsys):
@@ -241,7 +240,9 @@ def test_start_download_runs_fresh_when_the_resume_offer_is_declined(
 
     assert prompts[0].startswith("发现上次未完成的 1 天")
     assert prompts[-1] == "确认开始下载？"
-    assert ran == [["rmrb", "gmrb", "dzrb", "jjrb"]]  # a fresh run over all sites
+    assert ran == [
+        ["zgjjzk", "rmzk", "rmrb", "rmrbhwb", "rmlt", "gmrb", "dzrb", "jjrb"]
+    ]  # a fresh run over all sites
 
 
 def test_handle_event_keeps_bracketed_site_keys(capsys):
@@ -255,11 +256,11 @@ def test_handle_event_keeps_bracketed_site_keys(capsys):
     assert "[rmrb] 未找到站点，已跳过" in capsys.readouterr().out
 
 
-
-
 def test_resuming_a_ledger_with_a_vanished_site_clears_it(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
-    store.start_run(["gone", "rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+    store.start_run(
+        ["gone", "rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md"
+    )
     store.record_day("gone", date(2026, 9, 1), FAILED)
     store.record_day("rmrb", date(2026, 9, 1), FAILED)
 
@@ -279,7 +280,9 @@ def test_resuming_a_ledger_with_a_vanished_site_clears_it(tmp_path, monkeypatch)
 
 def test_resume_offer_counts_only_resumable_days(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
-    store.start_run(["gone", "rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+    store.start_run(
+        ["gone", "rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md"
+    )
     store.record_day("gone", date(2026, 9, 1), FAILED)
     store.record_day("rmrb", date(2026, 9, 1), FAILED)
 
@@ -314,7 +317,9 @@ def test_resume_offer_falls_back_to_a_fresh_run_when_nothing_is_resumable(
 
     # Not a dead end: the user gets the normal fresh-run flow instead of the menu.
     assert prompts == ["确认开始下载？"]
-    assert ran == [["rmrb", "gmrb", "dzrb", "jjrb"]]
+    assert ran == [
+        ["zgjjzk", "rmzk", "rmrb", "rmrbhwb", "rmlt", "gmrb", "dzrb", "jjrb"]
+    ]
 
 
 def test_menu_save_persists_every_field(tmp_path):

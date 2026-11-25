@@ -62,9 +62,7 @@ def test_crawl_site_workers_default_and_override():
 
 
 def test_format_choice_and_dates():
-    args = _parsed(
-        "crawl", "-f", "txt", "--start", "20260901", "--end", "2026-09-03"
-    )
+    args = _parsed("crawl", "-f", "txt", "--start", "20260901", "--end", "2026-09-03")
     assert args.fmt == "txt"
     assert args.start == date(2026, 9, 1)
     assert args.end == date(2026, 9, 3)
@@ -94,7 +92,16 @@ def test_invalid_date_exits_two():
 def test_resolve_sites_all_and_aliases():
     sites, unknown = _resolve_sites("all")
     # Sorted by the Chinese site name.
-    assert [s.crawler_id for s in sites] == ["rmrb", "gmrb", "dzrb", "jjrb"]
+    assert [s.crawler_id for s in sites] == [
+        "zgjjzk",
+        "rmzk",
+        "rmrb",
+        "rmrbhwb",
+        "rmlt",
+        "gmrb",
+        "dzrb",
+        "jjrb",
+    ]
     assert unknown == []
 
     sites, unknown = _resolve_sites("rmrb, 光明")
@@ -140,7 +147,16 @@ def test_sites_json(capsys):
     assert main(["sites", "--json"]) == EXIT_OK
     payload = json.loads(capsys.readouterr().out)
     ids = {s["id"] for s in payload["sites"]}
-    assert ids == {"rmrb", "gmrb", "jjrb", "dzrb"}
+    assert ids == {
+        "zgjjzk",
+        "rmzk",
+        "rmrb",
+        "rmrbhwb",
+        "rmlt",
+        "gmrb",
+        "jjrb",
+        "dzrb",
+    }
     assert all(
         "name" in s and "aliases" in s and "base_url" in s for s in payload["sites"]
     )
@@ -462,7 +478,10 @@ def test_crawl_writes_a_ledger_of_every_day(tmp_path, monkeypatch, capsys):
         on_day("rmrb", date(2026, 9, 2), FAILED, None, "抓取失败")
         on_event(
             ProgressEvent(
-                kind="day_error", site="人民日报", date=date(2026, 9, 2), message="抓取失败"
+                kind="day_error",
+                site="人民日报",
+                date=date(2026, 9, 2),
+                message="抓取失败",
             )
         )
         return CrawlStats(days_attempted=2, days_success=1, total_errors=1)
@@ -507,9 +526,7 @@ def test_crawl_resume_reruns_only_the_open_days(tmp_path, monkeypatch, capsys):
     seen: list[tuple] = []
 
     def fake_run_multi(keys, opts, on_event, max_site_workers=4, on_day=None, **kw):
-        seen.append(
-            (keys, opts.start_date, opts.end_date, kw.get("days_by_site"))
-        )
+        seen.append((keys, opts.start_date, opts.end_date, kw.get("days_by_site")))
         on_day("rmrb", date(2026, 9, 2), DONE, tmp_path / "b.md", None)
         return CrawlStats(days_attempted=1, days_success=1)
 
@@ -592,7 +609,9 @@ def test_runs_table_output_lists_sites_and_status(tmp_path, capsys):
     assert "跳过 1" in out
 
 
-def test_crawl_resume_reports_ledger_sites_that_no_longer_exist(tmp_path, monkeypatch, capsys):
+def test_crawl_resume_reports_ledger_sites_that_no_longer_exist(
+    tmp_path, monkeypatch, capsys
+):
     """A ledger naming an unknown site must fail loudly, not exit 0 having crawled 0."""
     store = StateStore()
     _record_run(store, tmp_path, sites=("gone", "rmrb"))
@@ -693,7 +712,16 @@ def test_main_forces_utf8_output_on_a_legacy_locale(monkeypatch):
         monkeypatch.undo()
 
     payload = json.loads(buf.getvalue().decode("utf-8"))
-    assert {s["id"] for s in payload["sites"]} == {"rmrb", "gmrb", "jjrb", "dzrb"}
+    assert {s["id"] for s in payload["sites"]} == {
+        "rmrb",
+        "rmlt",
+        "rmzk",
+        "rmrbhwb",
+        "zgjjzk",
+        "gmrb",
+        "jjrb",
+        "dzrb",
+    }
 
 
 def test_table_output_survives_a_redirected_non_tty_stream(monkeypatch):
@@ -775,8 +803,16 @@ def test_a_run_remembers_concurrency_fast_and_skip(tmp_path, monkeypatch, capsys
     )
     assert (
         main(
-            ["crawl", "--sites", "nope", "--workers", "12", "--fast",
-             "--no-skip-existing", "--quiet"]
+            [
+                "crawl",
+                "--sites",
+                "nope",
+                "--workers",
+                "12",
+                "--fast",
+                "--no-skip-existing",
+                "--quiet",
+            ]
         )
         == EXIT_ERROR  # unknown site, but the run still records its settings
     )

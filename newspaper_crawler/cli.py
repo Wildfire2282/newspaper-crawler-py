@@ -102,8 +102,9 @@ def _add_download_args(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _set_download_defaults(subparsers: tuple[argparse.ArgumentParser, ...],
-                           prefs: Preferences) -> None:
+def _set_download_defaults(
+    subparsers: tuple[argparse.ArgumentParser, ...], prefs: Preferences
+) -> None:
     """Install the effective defaults for the flags the user left out.
 
     This is the single place the documented CLI defaults live. Applying the defaults
@@ -174,7 +175,7 @@ def build_parser(prefs: Optional[Preferences] = None) -> argparse.ArgumentParser
     """
     parser = argparse.ArgumentParser(
         prog="crawler",
-        description="报刊下载器：下载人民日报/光明日报/经济日报/大众日报电子版",
+        description="报刊下载器：下载人民日报/人民日报海外版/人民周刊/人民论坛/中国经济周刊/光明日报/经济日报/大众日报电子版",
         epilog=MAIN_EPILOG,
         formatter_class=argparse.RawDescriptionHelpFormatter,
         add_help=False,
@@ -470,7 +471,9 @@ def cmd_plan(args: argparse.Namespace) -> int:
         for site in settings.sites:
             current = settings.start
             while current <= settings.end:
-                path = site.day_filepath(current, settings.output_dir, settings.fmt.ext())
+                path = site.day_filepath(
+                    current, settings.output_dir, settings.fmt.ext()
+                )
                 days.append(
                     {
                         "site": site.name,

@@ -7,7 +7,7 @@ import pytest
 
 from newspaper_crawler.base import EmptyIndexError
 from newspaper_crawler.models import ArticleRef
-from newspaper_crawler.sites import dzrb, gmrb, jjrb, rmrb
+from newspaper_crawler.sites import dzrb, gmrb, jjrb, rmlt, rmrb, rmrbhwb, rmzk, zgjjzk
 
 
 class _FakeHttp:
@@ -126,6 +126,289 @@ def test_rmrb_old_editions_and_article():
     assert art.title == "老文章标题"
     assert art.author == "本报记者李四"
     assert art.paragraphs == ["段落一", "段落二"]
+
+
+# ---------------------------------------------------------------- People's Tribune
+
+
+def test_rmlt_layout_editions_and_article():
+    d = date(2026, 8, 17)
+    layout = f"{rmlt.BASE_URL}/pc/layout/202608/17/node_01.html"
+    article = f"{rmlt.BASE_URL}/pc/content/202608/17/content_30185900.html"
+    http = _FakeHttp(
+        dict(
+            [
+                _page(
+                    layout,
+                    """
+                    <html><body><div class="news">
+                      <h1><img src="ling.gif" />习近平新时代中国特色社会主义思想研究</h1>
+                      <ul id="01">
+                        <li><a href="../../../content/202608/17/content_30185900.html">
+                          从学理层面深刻领会习近平党建思想的重大意义
+                        </a></li>
+                      </ul>
+                      <h1>特别策划</h1>
+                      <ul id="02">
+                        <li><a href="../../../content/202608/17/content_30185901.html">标题乙</a></li>
+                      </ul>
+                    </div></body></html>
+                    """,
+                ),
+                _page(
+                    article,
+                    """
+                    <html><head><title>页面标题-人民网</title></head><body>
+                      <div class="article">
+                        <h3>引题</h3>
+                        <h1><p>从学理层面深刻领会习近平党建思想的重大意义</p></h1>
+                        <h2>副标题乙</h2>
+                        <p class="sec">原中央党史研究室主任 欧阳淞
+                          <span class="date">《人民论坛》（2026年08月17日 第 01版）</span>
+                        </p>
+                      </div>
+                      <div id="ozoom"><p>第一段</p><p>第二段</p></div>
+                    </body></html>
+                    """,
+                ),
+            ]
+        )
+    )
+
+    site = rmlt.RenminLuntanCrawler()
+    editions = site.get_editions(http, d)
+    assert [(e.num, e.name) for e in editions] == [
+        (1, "习近平新时代中国特色社会主义思想研究"),
+        (2, "特别策划"),
+    ]
+    assert editions[0].articles[0].url == article
+    assert editions[1].articles[0].title == "标题乙"
+
+    art = site.fetch_article(http, editions[0].articles[0], d)
+    assert art is not None
+    assert art.title == "从学理层面深刻领会习近平党建思想的重大意义"
+    assert art.yinti == "引题"
+    assert art.subtitle == "副标题乙"
+    assert art.author == "原中央党史研究室主任 欧阳淞"
+    assert art.paragraphs == ["第一段", "第二段"]
+    assert len(http.calls) == 2  # 整个合刊只需一次版面请求
+
+
+def test_rmlt_edition_name_drops_a_page_number_prefix():
+    d = date(2026, 8, 17)
+    layout = f"{rmlt.BASE_URL}/pc/layout/202608/17/node_01.html"
+    http = _FakeHttp(
+        {
+            layout: '<div class="news"><h1>02版：特别策划</h1><ul id="02">'
+            '<li><a href="../../../content/202608/17/content_2.html">稿件</a></li>'
+            "</ul></div>"
+        }
+    )
+
+    editions = rmlt.RenminLuntanCrawler().get_editions(http, d)
+
+    assert editions[0].name == "特别策划"
+
+
+# ---------------------------------------------------------------- People's Weekly
+
+
+def test_rmzk_layout_editions_and_article():
+    d = date(2026, 11, 6)
+    layout = f"{rmzk.BASE_URL}/pc/layout/202611/06/node_01.html"
+    article = f"{rmzk.BASE_URL}/pc/content/202611/06/content_30191064.html"
+    http = _FakeHttp(
+        dict(
+            [
+                _page(
+                    layout,
+                    """
+                    <html><body><div class="news">
+                      <h1><img src="ling.gif" />学习路上</h1>
+                      <ul id="01">
+                        <li><a href="../../../content/202611/06/content_30191064.html">
+                          新闻日历
+                        </a></li>
+                      </ul>
+                      <h1><img src="ling.gif" />学习贯彻习近平党建思想</h1>
+                      <ul id="02">
+                        <li><a href="../../../content/202611/06/content_30191067.html">
+                          坚持健全上下贯通、执行有力的组织体系
+                        </a></li>
+                      </ul>
+                    </div></body></html>
+                    """,
+                ),
+                _page(
+                    article,
+                    """
+                    <html><head><title>新闻日历-人民网</title></head><body>
+                      <div class="article">
+                        <h3></h3>
+                        <h1><p> 新闻日历 </p></h1>
+                        <h2></h2>
+                        <p class="sec">
+                          <span class="date">《人民周刊》（2026年11月06日 第 01版）</span>
+                        </p>
+                      </div>
+                      <div id="ozoom"><p>第一段</p><p>第二段</p></div>
+                    </body></html>
+                    """,
+                ),
+            ]
+        )
+    )
+
+    site = rmzk.RenminZhoukanCrawler()
+    editions = site.get_editions(http, d)
+    assert [(e.num, e.name) for e in editions] == [
+        (1, "学习路上"),
+        (2, "学习贯彻习近平党建思想"),
+    ]
+    assert editions[0].articles[0].url == article
+
+    art = site.fetch_article(http, editions[0].articles[0], d)
+    assert art is not None
+    assert art.title == "新闻日历"
+    assert art.author == ""  # the sec line holds only the date
+    assert art.paragraphs == ["第一段", "第二段"]
+
+
+# ---------------------------------------------------------------- China Economic Weekly
+
+
+def test_zgjjzk_layout_editions_and_article():
+    d = date(2026, 9, 15)
+    layout = f"{zgjjzk.BASE_URL}/pc/layout/202609/15/node_01.html"
+    article = f"{zgjjzk.BASE_URL}/pc/content/202609/15/content_30191719.html"
+    http = _FakeHttp(
+        dict(
+            [
+                _page(
+                    layout,
+                    """
+                    <html><body><div class="news">
+                      <h1><img src="ling.gif" />封面故事</h1>
+                      <ul id="01">
+                        <li><a href="../../../content/202609/15/content_30191719.html">
+                          拓宽服务消费新场景
+                        </a></li>
+                      </ul>
+                    </div></body></html>
+                    """,
+                ),
+                _page(
+                    article,
+                    """
+                    <html><head><title>拓宽服务消费新场景-人民网</title></head><body>
+                      <div class="article">
+                        <h3></h3>
+                        <h1><p> 拓宽服务消费新场景 </p></h1>
+                        <h2></h2>
+                        <p class="sec">本刊评论员
+                          <span class="date">《中国经济周刊》（2026年09月15日 第 01版）</span>
+                        </p>
+                      </div>
+                      <div id="ozoom"><p>段一</p><p>段二</p></div>
+                    </body></html>
+                    """,
+                ),
+            ]
+        )
+    )
+
+    site = zgjjzk.JingjiZhoukanCrawler()
+    editions = site.get_editions(http, d)
+    assert [(e.num, e.name) for e in editions] == [(1, "封面故事")]
+
+    art = site.fetch_article(http, editions[0].articles[0], d)
+    assert art is not None
+    assert art.title == "拓宽服务消费新场景"
+    assert art.author == "本刊评论员"
+    assert art.paragraphs == ["段一", "段二"]
+
+
+# ---------------------------------------------------------------- People's Daily Overseas Edition
+
+
+def test_rmrbhwb_node_editions_and_article():
+    d = date(2026, 11, 25)
+    base = f"{rmrbhwb.BASE_URL}/pc/layout/202611/25"
+    page1 = f"{base}/node_01.html"
+    page2 = f"{base}/node_02.html"
+    article = f"{rmrbhwb.BASE_URL}/pc/content/202611/25/content_30193023.html"
+    article2 = f"{rmrbhwb.BASE_URL}/pc/content/202611/25/content_30193029.html"
+    http = _FakeHttp(
+        dict(
+            [
+                _page(
+                    page1,
+                    """
+                    <html><body>
+                      <div class="swiper-slide">
+                        <a id="pageLink" href="node_01.html">01版：要闻</a>
+                      </div>
+                      <div class="swiper-slide">
+                        <a id="pageLink" href="node_02.html">02版：要闻</a>
+                      </div>
+                      <div class="news"><ul class="news-list">
+                        <li><a href="../../../content/202611/25/content_30193023.html">
+                          “以党章为根本”
+                        </a></li>
+                      </ul></div>
+                      <div class="down">
+                        <a href="../../../content/202611/25/content_30193023.html">
+                          第01版：要闻 PDF下载
+                        </a>
+                      </div>
+                    </body></html>
+                    """,
+                ),
+                _page(
+                    page2,
+                    """
+                    <html><body><div class="news"><ul class="news-list">
+                      <li><a href="../../../content/202611/25/content_30193029.html">
+                        首个中外联合飞行乘组今日出征太空
+                      </a></li>
+                    </ul></div></body></html>
+                    """,
+                ),
+                _page(
+                    article,
+                    """
+                    <html><head><title>“以党章为根本”-人民网</title></head><body>
+                      <div class="article">
+                        <h3><p> 微观察 </p></h3>
+                        <h1><p> “以党章为根本” </p></h1>
+                        <h2></h2>
+                        <p class="sec">本报记者  张  洋
+                          <span class="date">《人民日报海外版》（2026年11月25日 第 01 版）</span>
+                        </p>
+                      </div>
+                      <div id="ozoom"><p>第一段</p><p>第二段</p></div>
+                    </body></html>
+                    """,
+                ),
+            ]
+        )
+    )
+
+    site = rmrbhwb.RenminHaiwaibanCrawler()
+    editions = site.get_editions(http, d)
+    assert [(e.num, e.name) for e in editions] == [(1, "要闻"), (2, "要闻")]
+    # The "PDF下载" anchor points at the same content URL; it must not duplicate.
+    assert [a.url for a in editions[0].articles] == [article]
+    assert [a.url for a in editions[1].articles] == [article2]
+    assert http.calls.count(page1) == 1  # navigation and edition 1 share one request
+
+    art = site.fetch_article(http, editions[0].articles[0], d)
+    assert art is not None
+    assert art.title == "“以党章为根本”"
+    assert art.yinti == "微观察"
+    assert art.subtitle == ""
+    assert art.author == "本报记者 张 洋"
+    assert art.paragraphs == ["第一段", "第二段"]
 
 
 # ---------------------------------------------------------------- Guangming Daily (new)
@@ -329,11 +612,15 @@ def test_dzrb_editions_and_article():
 
 
 def test_sites_return_empty_when_index_missing():
-    """All four sites return an empty list when the index page is unreachable."""
+    """All registered sites return an empty list when the index page is unreachable."""
     http = _FakeHttp({})
     d = date(2026, 9, 10)
     for site in (
         rmrb.RenminCrawler(),
+        rmlt.RenminLuntanCrawler(),
+        rmzk.RenminZhoukanCrawler(),
+        rmrbhwb.RenminHaiwaibanCrawler(),
+        zgjjzk.JingjiZhoukanCrawler(),
         gmrb.GuangmingCrawler(),
         jjrb.JingjiCrawler(),
         dzrb.DazhongCrawler(),
@@ -351,6 +638,22 @@ def test_sites_raise_empty_index_when_structure_unrecognized():
         (
             rmrb.RenminCrawler(),
             {f"{rmrb.BASE_URL}/pc/layout/202609/10/node_01.html": changed},
+        ),
+        (
+            rmlt.RenminLuntanCrawler(),
+            {f"{rmlt.BASE_URL}/pc/layout/202609/10/node_01.html": changed},
+        ),
+        (
+            rmzk.RenminZhoukanCrawler(),
+            {f"{rmzk.BASE_URL}/pc/layout/202609/10/node_01.html": changed},
+        ),
+        (
+            zgjjzk.JingjiZhoukanCrawler(),
+            {f"{zgjjzk.BASE_URL}/pc/layout/202609/10/node_01.html": changed},
+        ),
+        (
+            rmrbhwb.RenminHaiwaibanCrawler(),
+            {f"{rmrbhwb.BASE_URL}/pc/layout/202609/10/node_01.html": changed},
         ),
         (
             gmrb.GuangmingCrawler(),

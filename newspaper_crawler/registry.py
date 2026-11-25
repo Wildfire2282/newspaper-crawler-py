@@ -14,10 +14,18 @@ from .base import SiteCrawler
 from .sites.dzrb import DazhongCrawler
 from .sites.gmrb import GuangmingCrawler
 from .sites.jjrb import JingjiCrawler
+from .sites.rmlt import RenminLuntanCrawler
 from .sites.rmrb import RenminCrawler
+from .sites.rmrbhwb import RenminHaiwaibanCrawler
+from .sites.rmzk import RenminZhoukanCrawler
+from .sites.zgjjzk import JingjiZhoukanCrawler
 
 _SITES: list[SiteCrawler] = [
     RenminCrawler(),
+    RenminLuntanCrawler(),
+    RenminZhoukanCrawler(),
+    RenminHaiwaibanCrawler(),
+    JingjiZhoukanCrawler(),
     GuangmingCrawler(),
     JingjiCrawler(),
     DazhongCrawler(),

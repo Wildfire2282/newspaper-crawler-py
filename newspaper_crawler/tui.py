@@ -79,7 +79,10 @@ def print_banner() -> None:
     banner = Panel(
         Text.assemble(
             ("报刊下载器 · 电子报批量下载\n", "bold cyan"),
-            ("人民日报 / 光明日报 / 经济日报 / 大众日报\n", "dim"),
+            (
+                "人民日报 / 人民日报海外版 / 人民周刊 / 人民论坛 / 中国经济周刊 / 光明日报 / 经济日报 / 大众日报\n",
+                "dim",
+            ),
             (f"v{VERSION} · 交互式命令行版", "italic"),
         ),
         border_style="cyan",
@@ -112,9 +115,7 @@ def choose_sites(prefs: Preferences, store: Optional[StateStore] = None) -> None
         )
     console.print(table)
 
-    current_idx = [
-        i for i, s in enumerate(sites, 1) if s.crawler_id in prefs.site_keys
-    ]
+    current_idx = [i for i, s in enumerate(sites, 1) if s.crawler_id in prefs.site_keys]
     default_hint = (
         "，".join(str(i) for i in current_idx)
         if current_idx
@@ -183,7 +184,9 @@ def choose_output_dir(prefs: Preferences, store: Optional[StateStore] = None) ->
         if not path.is_absolute():
             path = Path.cwd() / path
         prefs.output_dir = path.as_posix()
-    console.print(f"[green]输出目录：{escape(str(prefs.output_path(Path.cwd())))}[/green]")
+    console.print(
+        f"[green]输出目录：{escape(str(prefs.output_path(Path.cwd())))}[/green]"
+    )
     save_preferences(prefs, store)
 
 
@@ -439,7 +442,9 @@ def run() -> int:
     try:
         store = StateStore()
     except OSError as exc:  # An unreadable state file must not block the menu.
-        console.print(f"[yellow]状态文件不可用（{escape(str(exc))}），本次不保存设置[/yellow]")
+        console.print(
+            f"[yellow]状态文件不可用（{escape(str(exc))}），本次不保存设置[/yellow]"
+        )
         store = None
     try:
         print_banner()
