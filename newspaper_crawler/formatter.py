@@ -10,6 +10,9 @@ from .util import weekday_cn_full
 
 RE_ANCHOR = re.compile(r"[^\w\s\u4e00-\u9fff-]")
 RE_SPACE = re.compile(r"\s+")
+# Leading page-number prefix already covered by the "第NN版" label, e.g.
+# "第01版：要闻" or "01版 要闻".
+RE_PAGE_PREFIX = re.compile(r"^第?\d+版\s*[:：]?\s*")
 
 SEPARATOR = "=" * 60
 DIVIDER = "  ----------------------------------------"
@@ -75,13 +78,13 @@ class Formatter:
             label = edition_label(ed)
             count = len(ed.articles)
             count_str = f"（{count}篇）" if count > 0 else ""
-            lines.append(f"- **[{label}](#{ed_anchor})**{count_str}\n")
+            lines.append(f"- **[{md_escape(label)}](#{ed_anchor})**{count_str}\n")
             for art, art_anchor in zip(ed.articles, arts):
                 title = art_title(art)
                 if not title:
                     lines.append(f"  - [（无标题）](#{art_anchor})\n")
                 else:
-                    lines.append(f"  - [{title}](#{art_anchor})\n")
+                    lines.append(f"  - [{md_escape(title)}](#{art_anchor})\n")
         lines.append("\n---\n\n")
         return lines
 
@@ -132,10 +135,20 @@ def count_full(editions: list[Edition]) -> int:
 
 
 def edition_label(ed: Edition) -> str:
-    """Edition heading: 第NN版, suffixed with the page name when present."""
-    if not ed.name:
+    """Edition heading: 第NN版, suffixed with the page name when present.
+
+    Some sources repeat the page number inside the name ("第01版：要闻");
+    strip that prefix so the label is not duplicated.
+    """
+    name = RE_PAGE_PREFIX.sub("", ed.name)
+    if not name:
         return f"第{ed.num:02d}版"
-    return f"第{ed.num:02d}版 · {ed.name}"
+    return f"第{ed.num:02d}版 · {name}"
+
+
+def md_escape(text: str) -> str:
+    """Escape characters that would break Markdown link text: backslash and brackets."""
+    return text.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
 
 
 def anchors(

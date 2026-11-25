@@ -2,7 +2,13 @@
 
 from datetime import date
 
-from newspaper_crawler.formatter import Formatter, anchors, count_full, md_anchor
+from newspaper_crawler.formatter import (
+    Formatter,
+    anchors,
+    count_full,
+    edition_label,
+    md_anchor,
+)
 from newspaper_crawler.models import Article, ArticleRef, Edition
 
 D = date(2026, 9, 10)
@@ -130,3 +136,43 @@ def test_plain_reports_empty_title():
     txt = Formatter("人民日报", "http://example.com").plain(D, editions)
 
     assert "■ （无标题）" in txt
+
+
+def test_edition_label_strips_repeated_page_prefix():
+    """Sources repeat the page number inside the name; the label must not."""
+    assert edition_label(Edition(num=1, name="第01版：要闻", articles=[])) == "第01版 · 要闻"
+    assert edition_label(Edition(num=1, name="第01版", articles=[])) == "第01版"
+    assert edition_label(Edition(num=2, name="", articles=[])) == "第02版"
+
+
+def test_markdown_toc_escapes_brackets_in_link_text():
+    """Unescaped [ ] would nest a link inside link text and break the TOC entry."""
+    editions = [
+        Edition(
+            num=1,
+            name="第01版：要闻[特]",
+            articles=[Article(title="标题[注]", paragraphs=["正文"])],
+        )
+    ]
+
+    md = Formatter("人民日报", "http://example.com").markdown(D, editions)
+
+    # TOC link text is escaped...
+    assert "- **[第01版 · 要闻\\[特\\]](#第01版-要闻特)**（1篇）" in md
+    assert "  - [标题\\[注\\]](#标题注)" in md
+    # ...while headings stay raw and no nested unescaped bracket remains.
+    assert "## 第01版 · 要闻[特]" in md
+    assert "### 标题[注]" in md
+    assert "  - [标题[注]](#标题注)" not in md
+
+
+def test_markdown_normal_labels_and_titles_unchanged():
+    """Bracket-free input keeps byte-identical TOC lines."""
+    md = Formatter("人民日报", "http://paper.people.com.cn/rmrb").markdown(
+        D, _editions()
+    )
+
+    assert "- **[第01版 · 要闻](#第01版-要闻)**（3篇）" in md
+    assert "  - [标题甲](#标题甲)" in md
+    assert "  - [未抓取](#未抓取)" in md
+    assert "\\[" not in md
