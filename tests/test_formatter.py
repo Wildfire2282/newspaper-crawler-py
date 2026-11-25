@@ -80,6 +80,43 @@ def test_unfetched_article_keeps_its_section_and_toc_anchor():
     assert "（正文获取失败）" in md
 
 
+def test_plain_reports_empty_body_article():
+    editions = [Edition(num=1, name="要闻", articles=[Article(title="T", paragraphs=[])])]
+
+    txt = Formatter("人民日报", "http://example.com").plain(D, editions)
+
+    assert "■ T" in txt
+    assert "（正文获取失败）" in txt
+
+
+def test_plain_reports_empty_body_image_only_article():
+    editions = [
+        Edition(
+            num=1,
+            name="要闻",
+            articles=[Article(title="图", image_desc="图片说明", paragraphs=[])],
+        )
+    ]
+
+    txt = Formatter("人民日报", "http://example.com").plain(D, editions)
+
+    assert "[图] 图片说明" in txt
+    assert "（正文获取失败）" in txt
+
+
+def test_plain_normal_article_has_no_failure_marker():
+    editions = [
+        Edition(num=1, name="要闻", articles=[Article(title="T", paragraphs=["第一段", "第二段"])])
+    ]
+
+    txt = Formatter("人民日报", "http://example.com").plain(D, editions)
+
+    assert "    第一段" in txt
+    assert "    第二段" in txt
+    assert "（正文获取失败）" not in txt
+    assert txt.endswith("  ----------------------------------------\n\n\n")
+
+
 def test_plain_reports_unfetched_article():
     txt = Formatter("人民日报", "http://paper.people.com.cn/rmrb").plain(D, _editions())
     assert "■ 未抓取" in txt

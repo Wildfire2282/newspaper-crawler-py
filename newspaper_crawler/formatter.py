@@ -116,11 +116,15 @@ class Formatter:
                     out += f"    {art.author}\n"
                 if art.image_desc:
                     out += f"    [图] {art.image_desc}\n"
-                out += "\n"
-                for p in art.paragraphs:
-                    p = p.strip()
-                    if p:
-                        out += f"    {p}\n\n"
+                if art.paragraphs:
+                    out += "\n"
+                    for p in art.paragraphs:
+                        p = p.strip()
+                        if p:
+                            out += f"    {p}\n\n"
+                else:
+                    # Match Markdown: a lost body must stay visible, not be silent.
+                    out += FETCH_FAILED_TXT
                 out += DIVIDER + "\n\n"
             out += "\n"
         return out
