@@ -1,0 +1,25 @@
+{
+  "tree": "32a4022",
+  "rows": [
+    {
+      "site_workers": 1,
+      "seen": [
+        1
+      ],
+      "summary_has_site_workers": true
+    },
+    {
+      "site_workers": 4,
+      "seen": [
+        4
+      ],
+      "summary_has_site_workers": true
+    }
+  ],
+  "checks": {
+    "one_reaches": true,
+    "four_reaches": true,
+    "summary_exposes": true
+  },
+  "VERDICT": "PASS"
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

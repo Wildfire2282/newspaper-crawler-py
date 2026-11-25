@@ -1,0 +1,10 @@
+tree=180c1db
+command=<repo>\.venv\Scripts\python.exe -m pytest tests/test_sites.py -q --no-cov
+exit=0
+stdout=..........................                                               [100%]
+26 passed in 0.16s
+
+stderr=
+covered=["test_legacy_meta_title_c_c_body_and_author", "test_legacy_title_only_fallback_without_body", "test_legacy_normal_article_still_parses"]
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

@@ -1,0 +1,3 @@
+edition_label(第01版：要闻) = 第01版 · 第01版：要闻
+edition_label(第01版) = 第01版 · 第01版
+edition_label(empty) = 第02版

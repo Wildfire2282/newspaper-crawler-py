@@ -1,0 +1,62 @@
+{
+  "tree": "9f13153",
+  "command": [
+    "<repo>\\.venv\\Scripts\\python.exe",
+    "-m",
+    "newspaper_crawler",
+    "crawl",
+    "--sites",
+    "rmzk",
+    "--start",
+    "2026-11-06",
+    "--end",
+    "2026-11-06",
+    "-o",
+    "<temp>\\<run-tmp>\\<qa-tmp>\\out",
+    "--json",
+    "--quiet"
+  ],
+  "exit": 0,
+  "stats": {
+    "days_attempted": 1,
+    "days_success": 1,
+    "days_skipped": 0,
+    "days_empty": 0,
+    "total_editions": 13,
+    "total_articles": 41,
+    "total_errors": 0
+  },
+  "files": [
+    "<temp>\\<run-tmp>\\<qa-tmp>\\out\\人民周刊\\2026\\11\\2026-11-06.md"
+  ],
+  "labels": [
+    "第01版 · 学习路上",
+    "第02版 · 学习贯彻习近平党建思想",
+    "第03版 · 人民融媒",
+    "第04版 · 专题",
+    "第05版 · 精神谱系研究与传播",
+    "第06版 · 专题",
+    "第07版 · 关注",
+    "第08版 · 论坛",
+    "第09版 · 党建一线",
+    "第10版 · 百馆品读",
+    "第11版 · 金台谈艺",
+    "第12版 · 好书荐读",
+    "第13版 · 金台书苑"
+  ],
+  "duplicate_labels": [],
+  "anchor_count": 54,
+  "unique_anchor_count": 54,
+  "checks": {
+    "exit_zero": true,
+    "ok_true": true,
+    "editions_13": true,
+    "articles_41": true,
+    "errors_zero": true,
+    "file_written": true,
+    "no_duplicate_labels": true,
+    "anchors_unique": true,
+    "no_traceback": true
+  },
+  "VERDICT": "PASS"
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

@@ -1,0 +1,51 @@
+{
+  "tree": "ce687ad",
+  "seen_keys": [
+    [
+      "rmrb"
+    ]
+  ],
+  "exit": 1,
+  "json": {
+    "ok": false,
+    "sites": [
+      "rmrb"
+    ],
+    "unknown_sites": [
+      "nope"
+    ],
+    "start_date": "2026-11-19",
+    "end_date": "2026-11-25",
+    "output_dir": "<repo>\\downloads",
+    "format": "md",
+    "elapsed_secs": 0.0,
+    "resumed": false,
+    "stats": {
+      "days_attempted": 0,
+      "days_success": 0,
+      "days_skipped": 0,
+      "days_empty": 0,
+      "total_editions": 0,
+      "total_articles": 0,
+      "total_errors": 0
+    },
+    "files": [],
+    "skipped": [],
+    "errors": [],
+    "warnings": [
+      {
+        "site": "nope",
+        "date": null,
+        "message": "无法识别的站点：nope"
+      }
+    ]
+  },
+  "stderr": "警告：无法识别的站点：nope\n",
+  "checks": {
+    "exit_1": true,
+    "known_site_ran": true,
+    "warning_present": true,
+    "new_ledger_for_known": true
+  },
+  "VERDICT": "PASS"
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

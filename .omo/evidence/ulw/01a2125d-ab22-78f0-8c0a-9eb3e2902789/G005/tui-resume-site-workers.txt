@@ -1,0 +1,10 @@
+{
+  "tree": "32a4022",
+  "seen": [
+    1
+  ],
+  "checks": {
+    "resume_site_workers_1": true
+  },
+  "VERDICT": "PASS"
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

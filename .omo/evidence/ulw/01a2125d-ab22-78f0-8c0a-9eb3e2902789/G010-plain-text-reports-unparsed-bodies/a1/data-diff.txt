@@ -1,0 +1,62 @@
+tree=ef6c20a
+=== formatter ===
+{"labels": true, "toc_escaped": true, "plain_marker": true}
+# 测试报 · 2026年09月10日（星期四）
+
+> 来源：[测试报电子版](http://example.com) · 共 1 版 1 篇
+
+---
+
+## 版面目录
+
+- **[第01版 · 要闻\[特\]](#第01版-要闻特)**（1篇）
+  - [标题\[注\]](#标题注)
+
+---
+
+## 第01版 · 要闻[特]
+
+### 标题[注]
+
+　　p
+
+---
+
+
+=== malformed BOM ===
+{"bom_str": true}
+=== legacy live ===
+{"parity": true, "gmrb_author_clean": true, "counts": {"rmrb": [8, 56], "gmrb": [17, 77]}}
+=== 8-site live ===
+{
+  "all_ok": true,
+  "sites": {
+    "rmrb-new": "OK",
+    "rmrb-old": "OK",
+    "rmrbhwb": "OK",
+    "rmzk": "OK",
+    "rmlt": "OK",
+    "zgjjzk": "OK",
+    "gmrb-new": "OK",
+    "gmrb-old": "OK",
+    "jjrb": "OK",
+    "dzrb": "OK"
+  }
+}
+=== real md crawl ===
+{
+  "exit0": true,
+  "ok": true,
+  "stats": {
+    "days_attempted": 1,
+    "days_success": 1,
+    "days_skipped": 0,
+    "days_empty": 0,
+    "total_editions": 13,
+    "total_articles": 41,
+    "total_errors": 0
+  },
+  "file_nonempty": true
+}
+DATA_VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True; http_server_closed=True

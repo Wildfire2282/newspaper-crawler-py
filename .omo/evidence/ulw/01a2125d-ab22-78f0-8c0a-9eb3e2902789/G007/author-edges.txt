@@ -1,0 +1,10 @@
+tree=b23a939
+command=<repo>\.venv\Scripts\python.exe -m pytest tests/test_sites.py -q --no-cov
+exit=0
+stdout=.............................                                            [100%]
+29 passed in 0.21s
+
+stderr=
+author_tests=[test_legacy_gmrb_author_citation_only_becomes_empty, test_legacy_gmrb_author_keeps_real_byline_before_citation, test_legacy_rmrb_author_without_prefix_is_unchanged]
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

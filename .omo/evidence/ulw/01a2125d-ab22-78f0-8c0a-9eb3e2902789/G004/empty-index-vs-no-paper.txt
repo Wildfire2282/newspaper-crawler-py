@@ -1,0 +1,42 @@
+tree=ea8a13b
+records=[
+  {
+    "mode": "broken",
+    "events": [
+      "site_start",
+      "day_start",
+      "day_error",
+      "site_done"
+    ],
+    "day": [
+      [
+        "failed",
+        "索引页结构疑似变化: 版面导航为空"
+      ]
+    ],
+    "days_empty": 0,
+    "days_attempted": 1,
+    "total_errors": 1
+  },
+  {
+    "mode": "no-paper",
+    "events": [
+      "site_start",
+      "day_start",
+      "day_empty",
+      "site_done"
+    ],
+    "day": [
+      [
+        "empty",
+        null
+      ]
+    ],
+    "days_empty": 1,
+    "days_attempted": 1,
+    "total_errors": 0
+  }
+]
+checks={"broken_failed": true, "broken_day_error": true, "no_paper_empty": true}
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

@@ -1,0 +1,89 @@
+{
+  "tree": "ea8a13b",
+  "first_exit": 1,
+  "first_json": {
+    "ok": false,
+    "sites": [
+      "rmrb"
+    ],
+    "unknown_sites": [],
+    "start_date": "2026-09-01",
+    "end_date": "2026-09-01",
+    "output_dir": "<temp>\\<run-tmp>\\<qa-tmp>\\out",
+    "format": "md",
+    "elapsed_secs": 0.0,
+    "resumed": false,
+    "stats": {
+      "days_attempted": 1,
+      "days_success": 0,
+      "days_skipped": 0,
+      "days_empty": 0,
+      "total_editions": 0,
+      "total_articles": 0,
+      "total_errors": 1
+    },
+    "files": [],
+    "skipped": [],
+    "errors": [
+      {
+        "site": "测试报",
+        "date": "2026-09-01",
+        "message": "[测试报] 2026-09-01(周二) 抓取失败（索引页结构疑似已变化：版面导航为空）"
+      }
+    ],
+    "warnings": []
+  },
+  "first_stderr": "[ERROR] 抓取 测试报 2026-09-01 失败（索引页结构疑似已变化）: 版面导航为空\n",
+  "first_open_days": [
+    [
+      "rmrb",
+      "failed"
+    ]
+  ],
+  "resume_exit": 0,
+  "resume_json": {
+    "ok": true,
+    "sites": [
+      "rmrb"
+    ],
+    "unknown_sites": [],
+    "start_date": "2026-09-01",
+    "end_date": "2026-09-01",
+    "output_dir": "<temp>\\<run-tmp>\\<qa-tmp>\\out",
+    "format": "md",
+    "elapsed_secs": 0.0,
+    "resumed": true,
+    "stats": {
+      "days_attempted": 1,
+      "days_success": 1,
+      "days_skipped": 0,
+      "days_empty": 0,
+      "total_editions": 1,
+      "total_articles": 1,
+      "total_errors": 0
+    },
+    "files": [
+      "<temp>\\<run-tmp>\\<qa-tmp>\\out\\测试报\\2026\\09\\2026-09-01.md"
+    ],
+    "skipped": [],
+    "errors": [],
+    "warnings": []
+  },
+  "resume_stderr": "",
+  "resume_open_days": [],
+  "files": [
+    "<temp>\\<run-tmp>\\<qa-tmp>\\out\\测试报\\2026\\09\\2026-09-01.md"
+  ],
+  "checks": {
+    "first_exit_1": true,
+    "first_ok_false": true,
+    "first_total_errors_1": true,
+    "first_days_empty_0": true,
+    "first_ledger_failed": true,
+    "resume_exit_0": true,
+    "resume_ok_true": true,
+    "resume_closed": true,
+    "resume_wrote_file": true
+  },
+  "VERDICT": "PASS"
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

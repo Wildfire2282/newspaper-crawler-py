@@ -1,0 +1,7 @@
+tree=a8600d1
+exit_of_harness=0
+stdout={"ok": false, "error": "内部错误：RuntimeError: boom"}
+stderr='错误：内部错误：RuntimeError: boom\nRC=1\n'
+checks_pass=True
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

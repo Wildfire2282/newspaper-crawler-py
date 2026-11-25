@@ -1,0 +1,10 @@
+{
+  "tree": "0032f2d",
+  "body_hex": "efbbbfff",
+  "result_repr": "'ﺅﭨﺟﹽ'",
+  "checks": {
+    "returns_str": true,
+    "non_empty": true
+  },
+  "VERDICT": "PASS"
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True; http_server_closed=True

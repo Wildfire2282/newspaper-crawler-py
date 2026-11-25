@@ -1,0 +1,13 @@
+base=db78c68 head=2a734af tree=ef6c20a
+=== CLI surface ===
+1 success-json {"exit0": true, "ok": true, "keys": true, "skipped1": true, "no_tb": true}
+{"ok": true, "sites": ["rmrb"], "unknown_sites": [], "start_date": "2026-09-01", "end_date": "2026-09-01", "output_dir": "<temp>\\<run-tmp>\\<qa-tmp>\\success_out", "format": "md", "elapsed_secs": 0.0, "resumed": false, "stats": {"days_attempted": 0, "days_success": 0, "days_skipped": 1, "days_empty": 0, "total_editions": 0, "total_articles": 0, "total_errors": 0}, "files": [], "skipped": ["<temp>\\<run-tmp>\\<qa-tmp>\\success_out\\人民日报\\2026\\09\\2026-09-01.md"], "errors": [], "warnings": []}
+2 resume-error {"exit1": true, "json_ok_false": true, "error": true, "stderr": true, "no_tb": true}
+{"ok": false, "error": "没有可续传的任务。"}
+3 unknown-warning {"exit1": true, "unknown": true, "warn": true, "errors_empty": true}
+4 zero-site-preserve {"exit1": true, "same_run": true, "open": true}
+5 interrupt-json {"exit130": true, "json": true, "stderr": true, "no_tb": true, "history": true}
+6 unexpected-exception {"exit1": true, "json": true, "no_tb": true}
+7 plan-no-skip {"exit0": true, "skip_false": true, "fetch": true, "summary": true}
+CLI_VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True; http_server_closed=True

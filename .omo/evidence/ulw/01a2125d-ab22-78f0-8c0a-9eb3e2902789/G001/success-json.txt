@@ -1,0 +1,37 @@
+tree=a8600d1
+cwd=<temp>\ulw-wt-G001
+state=<temp>\<run-tmp>\<qa-tmp>\success_state.json
+command=<repo>\.venv\Scripts\python.exe -m newspaper_crawler crawl --sites rmrb --start 2026-09-01 --end 2026-09-01 -o <temp>\<run-tmp>\<qa-tmp>\out --json --quiet
+exit=0
+stdout={
+  "ok": true,
+  "sites": [
+    "rmrb"
+  ],
+  "unknown_sites": [],
+  "start_date": "2026-09-01",
+  "end_date": "2026-09-01",
+  "output_dir": "<temp>\\<run-tmp>\\<qa-tmp>\\out",
+  "format": "md",
+  "elapsed_secs": 0.0,
+  "resumed": false,
+  "stats": {
+    "days_attempted": 0,
+    "days_success": 0,
+    "days_skipped": 1,
+    "days_empty": 0,
+    "total_editions": 0,
+    "total_articles": 0,
+    "total_errors": 0
+  },
+  "files": [],
+  "skipped": [
+    "<temp>\\<run-tmp>\\<qa-tmp>\\out\\人民日报\\2026\\09\\2026-09-01.md"
+  ],
+  "errors": [],
+  "warnings": []
+}
+stderr=''
+checks={"exit_zero": true, "one_json_object": true, "all_documented_keys": true, "ok_true": true, "days_skipped_1": true, "skipped_path_recorded": true, "no_traceback": true}
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

@@ -1,0 +1,35 @@
+{
+  "tree": "ce687ad",
+  "exit": 130,
+  "json": {
+    "ok": false,
+    "error": "已中断"
+  },
+  "stderr": "已中断。\n",
+  "history": [
+    {
+      "run_id": "20261125T201641.752896",
+      "started_at": "2026-11-25T20:16:41",
+      "output_dir": "<temp>\\<run-tmp>\\<qa-tmp>\\c3out",
+      "format": "md",
+      "sites": [
+        "rmrb"
+      ],
+      "summary": {
+        "done": 0,
+        "failed": 0,
+        "skipped": 0,
+        "empty": 0,
+        "pending": 1
+      }
+    }
+  ],
+  "checks": {
+    "exit_130": true,
+    "json_interrupt": true,
+    "stderr_message": true,
+    "no_traceback": true,
+    "history_closed": true
+  },
+  "VERDICT": "PASS"
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

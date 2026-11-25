@@ -1,0 +1,25 @@
+tree=a8600d1
+=== empty ledger ===
+command=<repo>\.venv\Scripts\python.exe -m newspaper_crawler crawl --resume --json --quiet
+exit=1
+stdout={"ok": false, "error": "没有可续传的任务。"}
+stderr='错误：没有可续传的任务。\n'
+checks_pass=True
+command=<repo>\.venv\Scripts\python.exe -m newspaper_crawler plan --resume --json
+exit=1
+stdout={"ok": false, "error": "没有可续传的任务。"}
+stderr='错误：没有可续传的任务。\n'
+checks_pass=True
+=== all ledger sites gone ===
+command=<repo>\.venv\Scripts\python.exe -m newspaper_crawler crawl --resume --json --quiet
+exit=1
+stdout={"ok": false, "error": "账本中的站点均已不可用，无法续传。"}
+stderr='错误：账本中的站点均已不可用，无法续传。\n'
+checks_pass=True
+command=<repo>\.venv\Scripts\python.exe -m newspaper_crawler plan --resume --json
+exit=1
+stdout={"ok": false, "error": "账本中的站点均已不可用，无法续传。"}
+stderr='错误：账本中的站点均已不可用，无法续传。\n'
+checks_pass=True
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

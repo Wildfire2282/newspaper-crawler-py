@@ -1,0 +1,144 @@
+{
+  "manualQa": {
+    "by": "main-session",
+    "status": "passed",
+    "evidence": "Final integrated QA on tree ef6c20a (head 2a734af): 7 CLI scenarios PASS (success 14-key JSON; resume error JSON; unknown warning; zero-site ledger preservation; Ctrl+C JSON 130; unexpected exception JSON; plan --no-skip-existing) and 5 data/site scenarios PASS (labels/TOC/plain marker; malformed BOM via local HTTP; legacy live parity/author; 8-site/10-case audit all OK; real rmzk md crawl 13 editions/41 articles/0 errors).",
+    "surfaceEvidence": [
+      {
+        "id": "surface-cli",
+        "criterionRef": "G008-C003",
+        "surface": "cli",
+        "invocation": "final_qa.py: success JSON, resume error, unknown warning, zero-site ledger preservation, interrupt, unexpected exception, plan no-skip",
+        "verdict": "passed",
+        "artifactRefs": [
+          "artifact-cli"
+        ]
+      },
+      {
+        "id": "surface-data",
+        "criterionRef": "G010-C003",
+        "surface": "data",
+        "invocation": "final_qa.py: formatter labels/TOC/plain, malformed BOM local server, legacy live parity/author, 8-site audit, real rmzk md crawl",
+        "verdict": "passed",
+        "artifactRefs": [
+          "artifact-data"
+        ]
+      }
+    ],
+    "adversarialCases": [
+      {
+        "id": "adv-bom",
+        "criterionRef": "G009-C001",
+        "scenario": "local HTTP 200 with UTF-8 BOM + 0xff",
+        "expectedBehavior": "get_text returns a string, no UnicodeDecodeError",
+        "verdict": "passed",
+        "artifactRefs": [
+          "artifact-data"
+        ]
+      },
+      {
+        "id": "adv-zero-site",
+        "criterionRef": "G008-C001",
+        "scenario": "crawl --sites nope with a prior failed open day",
+        "expectedBehavior": "exit 1, JSON warning, prior run_id/open day preserved",
+        "verdict": "passed",
+        "artifactRefs": [
+          "artifact-cli"
+        ]
+      },
+      {
+        "id": "adv-interrupt",
+        "criterionRef": "G008-C003",
+        "scenario": "run_multi raises KeyboardInterrupt under --json",
+        "expectedBehavior": "130, one {ok:false,error:已中断}, ledger closed, no traceback",
+        "verdict": "passed",
+        "artifactRefs": [
+          "artifact-cli"
+        ]
+      },
+      {
+        "id": "adv-brackets",
+        "criterionRef": "G002-C002",
+        "scenario": "title/edition name containing [ ] in Markdown TOC",
+        "expectedBehavior": "escaped link text, raw headings",
+        "verdict": "passed",
+        "artifactRefs": [
+          "artifact-data"
+        ]
+      },
+      {
+        "id": "adv-empty-body",
+        "criterionRef": "G010-C001",
+        "scenario": "Article with empty paragraphs rendered as .txt",
+        "expectedBehavior": "正文获取失败 marker",
+        "verdict": "passed",
+        "artifactRefs": [
+          "artifact-data"
+        ]
+      }
+    ],
+    "artifactRefs": [
+      {
+        "id": "artifact-cli",
+        "kind": "cli-transcript",
+        "description": "Final CLI matrix: success JSON, resume error, unknown warning, zero-site ledger preservation, interrupt, unexpected exception, plan no-skip",
+        "path": ".omo/evidence/ulw/01a2125d-ab22-78f0-8c0a-9eb3e2902789/G010-plain-text-reports-unparsed-bodies/a1/cli-transcript.txt"
+      },
+      {
+        "id": "artifact-data",
+        "kind": "data-diff",
+        "description": "Final data matrix: formatter labels/TOC/plain, malformed BOM local server, legacy live parity/author, 8-site audit, real md crawl",
+        "path": ".omo/evidence/ulw/01a2125d-ab22-78f0-8c0a-9eb3e2902789/G010-plain-text-reports-unparsed-bodies/a1/data-diff.txt"
+      },
+      {
+        "id": "artifact-iteration",
+        "kind": "log",
+        "description": "Final ruff/mypy/pytest 260 and diff status",
+        "path": ".omo/evidence/ulw/01a2125d-ab22-78f0-8c0a-9eb3e2902789/G010-plain-text-reports-unparsed-bodies/a1/iteration.txt"
+      }
+    ]
+  },
+  "gateReview": {
+    "by": "category:deep-high",
+    "recommendation": "APPROVE",
+    "reportPath": ".omo/evidence/ulw/01a2125d-ab22-78f0-8c0a-9eb3e2902789/G010-plain-text-reports-unparsed-bodies/a1/gate-review.md",
+    "evidence": "Reviewer independently reran 260 tests, ruff, mypy, live CLI contracts with isolated state, an in-process interrupt/exception harness, a formatter mutation check, and a real rmzk 2026-11-06 txt crawl (13 editions/41 articles/0 errors, exit 0). Full diff and all 31 criteria reviewed; 0 blockers.",
+    "blockers": [],
+    "notes": [
+      "G010 plan bookkeeping was in_progress pending this final checkpoint; all 31 criteria already pass at head tree ef6c20a.",
+      "Unknown-only runs intentionally stop before writing run settings so a typo cannot erase the previous resume ledger.",
+      "_clean_author truncates at 《; this matches live gmrb/rmrb data and was chosen over citation noise.",
+      "edition_label strips a leading page-number prefix; a legitimate name starting with 01版 would be normalized.",
+      "The broad except in _run_subcommand hides tracebacks at the CLI boundary but carries the exception type; this is required by the --json contract.",
+      "resp._content private-attribute caching is pre-existing at db78c68 and was verified by real requests."
+    ]
+  },
+  "iteration": {
+    "fullRerun": true,
+    "status": "passed",
+    "rerunCommands": [
+      "python -m ruff check .",
+      "python -m mypy newspaper_crawler",
+      "python -m pytest -q",
+      "final_qa.py (7 CLI + 5 data scenarios, 8-site live audit, real rmzk crawl)",
+      "reviewer rerun: pytest/ruff/mypy, live CLI contracts, mutation check, rmzk txt crawl"
+    ],
+    "evidence": "iteration.txt: ruff/mypy/pytest exit 0, 260 tests passed; final QA CLI_VERDICT=PASS and DATA_VERDICT=PASS; reviewer reproduced 13 editions/41 articles/0 errors live."
+  },
+  "criteriaCoverage": {
+    "totalCriteria": 31,
+    "passCount": 31,
+    "originalIntent": "系统性优化项目的工程设计，并修复真实 bug。",
+    "desiredOutcome": "真实缺陷被修复、重复策略收敛，下载器在 8 个站点与 CLI/交互入口上保持可用，JSON/续传/格式化契约一致。",
+    "userOutcomeReview": "用户现在得到单一 JSON 错误对象、续传账本不会被零站点运行清空、站点改版日可续传、TUI 真正使用站点并发、未知站点进入 warnings；真实报纸下载与 Markdown/纯文本输出保持正常。",
+    "adversarialClassesCovered": [
+      "malformed HTTP / BOM",
+      "zero-site typo and ledger preservation",
+      "Ctrl+C and unexpected handler exception",
+      "bracketed Markdown titles",
+      "empty article body",
+      "site redesign / EmptyIndexError",
+      "unwritable state file"
+    ]
+  }
+}

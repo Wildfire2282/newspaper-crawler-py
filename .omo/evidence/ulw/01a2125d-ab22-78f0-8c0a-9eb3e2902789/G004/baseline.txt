@@ -1,0 +1,2 @@
+{"mode": "broken", "event_kinds": ["site_start", "day_start", "log", "site_done"], "day_records": [["empty", "版面导航为空"]], "days_empty": 1, "days_attempted": 1, "total_errors": 0}
+{"mode": "no-paper", "event_kinds": ["site_start", "day_start", "day_empty", "site_done"], "day_records": [["empty", null]], "days_empty": 1, "days_attempted": 1, "total_errors": 0}

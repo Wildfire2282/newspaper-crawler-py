@@ -1,0 +1,31 @@
+head=2a734af tree=ef6c20a
+=== ruff ===
+All checks passed!
+exit=0
+=== mypy ===
+Success: no issues found in 28 source files
+exit=0
+=== pytest ===
+----------------------------------------------------------------------------------
+TOTAL                                   2215    137    640     96    91%
+260 passed in 1.61s
+exit=0
+=== git status ===
+=== range ===
+ newspaper_crawler/cli.py          |  75 ++++++++++--
+ newspaper_crawler/formatter.py    |  37 ++++--
+ newspaper_crawler/helptext.py     |  15 ++-
+ newspaper_crawler/http.py         |  10 +-
+ newspaper_crawler/scheduler.py    |  12 +-
+ newspaper_crawler/sites/gmrb.py   |  37 ++----
+ newspaper_crawler/sites/legacy.py |  66 +++++++++++
+ newspaper_crawler/sites/rmrb.py   |  41 ++-----
+ newspaper_crawler/tui.py          |  25 +++-
+ tests/test_cli.py                 | 233 +++++++++++++++++++++++++++++++++++++-
+ tests/test_formatter.py           |  85 +++++++++++++-
+ tests/test_http.py                |  10 ++
+ tests/test_scheduler.py           |  25 ++--
+ tests/test_sites.py               | 177 +++++++++++++++++++++++++++++
+ tests/test_tui.py                 |  55 ++++++++-
+ 15 files changed, 787 insertions(+), 116 deletions(-)
+VERDICT=PASS (ruff/mypy/pytest exit 0; final CLI and DATA QA PASS)

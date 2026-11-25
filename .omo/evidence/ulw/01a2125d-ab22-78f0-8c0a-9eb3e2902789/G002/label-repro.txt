@@ -1,0 +1,9 @@
+tree=9f13153
+labels={
+  "第01版：要闻": "第01版 · 要闻",
+  "第01版": "第01版",
+  "empty": "第02版"
+}
+checks={"prefixed_name": true, "bare_prefix": true, "empty": true}
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

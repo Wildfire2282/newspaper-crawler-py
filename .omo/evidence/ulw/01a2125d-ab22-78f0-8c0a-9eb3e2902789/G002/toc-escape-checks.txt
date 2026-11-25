@@ -1,0 +1,4 @@
+tree=9f13153
+checks={"edition_escaped": true, "title_escaped": true, "no_unescaped_title_link": true, "raw_heading": true, "raw_edition_heading": true}
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

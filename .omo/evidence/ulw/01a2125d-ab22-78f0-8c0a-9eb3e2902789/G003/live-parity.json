@@ -1,0 +1,149 @@
+{
+  "tree": "180c1db",
+  "before": {
+    "rmrb": {
+      "date": "2024-11-30",
+      "editions": 8,
+      "articles": 56,
+      "sample_articles": [
+        {
+          "query_title": "扎根中国大地赓续中华文脉厚植学术根基  为推进马克思主义中国化时代化作出更大贡献",
+          "title": "扎根中国大地赓续中华文脉厚植学术根基  为推进马克思主义中国化时代化作出更大贡献",
+          "yinti": "",
+          "subtitle": "",
+          "author": "",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "http://paper.people.com.cn/rmrb/html/2024-11/30/nw.D110000renmrb_20241130_1-01.htm",
+          "paragraphs_sha256": "7f04e6494715e82f5f226eca89944f58261eb3f2d6651a92d8363730bc3ac7dc",
+          "paragraphs_count": 11
+        },
+        {
+          "query_title": "习近平《在全国民族团结进步表彰大会上的讲话》单行本5种民族文字版出版",
+          "title": "习近平《在全国民族团结进步表彰大会上的讲话》单行本5种民族文字版出版",
+          "yinti": "",
+          "subtitle": "",
+          "author": "",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "http://paper.people.com.cn/rmrb/html/2024-11/30/nw.D110000renmrb_20241130_2-01.htm",
+          "paragraphs_sha256": "2ad065a80dc6aec49ce3093dc251f6a3e45b01bdaa430d916c2e3c9b43c0a702",
+          "paragraphs_count": 1
+        }
+      ]
+    },
+    "gmrb": {
+      "date": "2025-12-31",
+      "editions": 17,
+      "articles": 77,
+      "sample_articles": [
+        {
+          "query_title": "新年戏曲晚会在京举行",
+          "title": "新年戏曲晚会在京举行",
+          "yinti": "",
+          "subtitle": "",
+          "author": "作者：\n《光明日报》（ 2025年12月31日 01版）",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "https://epaper.gmw.cn/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_1-01.htm",
+          "paragraphs_sha256": "ae115db518ce92f570698daa5009488f5b5358b090cb401e48da3bc88032c448",
+          "paragraphs_count": 5
+        },
+        {
+          "query_title": "国家主席习近平将发表二〇二六年新年贺词",
+          "title": "国家主席习近平将发表二〇二六年新年贺词",
+          "yinti": "",
+          "subtitle": "",
+          "author": "作者：\n《光明日报》（ 2025年12月31日 01版）",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "https://epaper.gmw.cn/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_2-01.htm",
+          "paragraphs_sha256": "547a2993665319987c1a01ed910694b3d308b3c2076b4ecfbcc7e3eb741d25c7",
+          "paragraphs_count": 1
+        }
+      ]
+    }
+  },
+  "after": {
+    "rmrb": {
+      "date": "2024-11-30",
+      "editions": 8,
+      "articles": 56,
+      "sample_articles": [
+        {
+          "query_title": "扎根中国大地赓续中华文脉厚植学术根基  为推进马克思主义中国化时代化作出更大贡献",
+          "title": "扎根中国大地赓续中华文脉厚植学术根基  为推进马克思主义中国化时代化作出更大贡献",
+          "yinti": "",
+          "subtitle": "",
+          "author": "",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "http://paper.people.com.cn/rmrb/html/2024-11/30/nw.D110000renmrb_20241130_1-01.htm",
+          "paragraphs_sha256": "7f04e6494715e82f5f226eca89944f58261eb3f2d6651a92d8363730bc3ac7dc",
+          "paragraphs_count": 11
+        },
+        {
+          "query_title": "习近平《在全国民族团结进步表彰大会上的讲话》单行本5种民族文字版出版",
+          "title": "习近平《在全国民族团结进步表彰大会上的讲话》单行本5种民族文字版出版",
+          "yinti": "",
+          "subtitle": "",
+          "author": "",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "http://paper.people.com.cn/rmrb/html/2024-11/30/nw.D110000renmrb_20241130_2-01.htm",
+          "paragraphs_sha256": "2ad065a80dc6aec49ce3093dc251f6a3e45b01bdaa430d916c2e3c9b43c0a702",
+          "paragraphs_count": 1
+        }
+      ]
+    },
+    "gmrb": {
+      "date": "2025-12-31",
+      "editions": 17,
+      "articles": 77,
+      "sample_articles": [
+        {
+          "query_title": "新年戏曲晚会在京举行",
+          "title": "新年戏曲晚会在京举行",
+          "yinti": "",
+          "subtitle": "",
+          "author": "作者：\n《光明日报》（ 2025年12月31日 01版）",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "https://epaper.gmw.cn/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_1-01.htm",
+          "paragraphs_sha256": "ae115db518ce92f570698daa5009488f5b5358b090cb401e48da3bc88032c448",
+          "paragraphs_count": 5
+        },
+        {
+          "query_title": "国家主席习近平将发表二〇二六年新年贺词",
+          "title": "国家主席习近平将发表二〇二六年新年贺词",
+          "yinti": "",
+          "subtitle": "",
+          "author": "作者：\n《光明日报》（ 2025年12月31日 01版）",
+          "paragraphs": [
+            "<redacted: newspaper article body>"
+          ],
+          "url": "https://epaper.gmw.cn/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_2-01.htm",
+          "paragraphs_sha256": "547a2993665319987c1a01ed910694b3d308b3c2076b4ecfbcc7e3eb741d25c7",
+          "paragraphs_count": 1
+        }
+      ]
+    }
+  },
+  "diffs": [],
+  "checks": {
+    "rmrb_editions_8": true,
+    "gmrb_editions_17": true,
+    "all_sample_fields_identical": true
+  },
+  "VERDICT": "PASS",
+  "redactions": [
+    "newspaper article bodies replaced with <redacted: newspaper article body>; hashes and counts retained"
+  ]
+}cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True

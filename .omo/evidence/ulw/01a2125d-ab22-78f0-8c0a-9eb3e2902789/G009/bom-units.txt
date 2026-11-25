@@ -1,0 +1,10 @@
+tree=0032f2d
+command=<repo>\.venv\Scripts\python.exe -m pytest tests/test_http.py -q --no-cov
+exit=0
+stdout=...................                                                      [100%]
+19 passed in 0.05s
+
+stderr=
+tests=[test_decode_falls_through_on_malformed_utf8_bom, test_decode_falls_through_on_odd_length_utf16_bom]
+VERDICT=PASS
+cleanup=<temp>\<run-tmp>\<qa-tmp> removed=True; http_server_closed=True
