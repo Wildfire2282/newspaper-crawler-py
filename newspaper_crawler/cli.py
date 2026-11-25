@@ -561,6 +561,12 @@ def cmd_crawl(args: argparse.Namespace) -> int:
         else make_console(stderr=True, no_color=args.json, highlight=False)
     )
     progress = Progress(console)
+    # Unrecognized tokens are dropped before the run, so they never reach the scheduler:
+    # record them in the JSON warnings here, where the contract promises them.
+    for token in unknown:
+        progress.warnings.append(
+            {"site": token, "date": None, "message": f"无法识别的站点：{token}"}
+        )
 
     if console is not None:
         names = "、".join(s.name for s in sites) or "（无）"

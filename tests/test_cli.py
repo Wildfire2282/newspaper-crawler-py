@@ -293,7 +293,44 @@ def test_crawl_unknown_site_returns_error_without_network(capsys):
     payload = json.loads(capsys.readouterr().out)
     assert payload["ok"] is False
     assert payload["unknown_sites"] == ["nope"]
+    assert payload["warnings"] == [
+        {"site": "nope", "date": None, "message": "无法识别的站点：nope"}
+    ]
     assert payload["stats"]["days_attempted"] == 0
+
+
+def test_crawl_unknown_site_warns_while_known_sites_still_run(
+    monkeypatch, tmp_path, capsys
+):
+    seen: list[list[str]] = []
+
+    def fake_run_multi(keys, opts, **kwargs):
+        seen.append(list(keys))
+        return CrawlStats()
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", fake_run_multi)
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb,nope",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-01",
+            "-o",
+            str(tmp_path),
+            "--json",
+            "--quiet",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == EXIT_ERROR
+    assert payload["ok"] is False
+    assert [w["site"] for w in payload["warnings"]] == ["nope"]
+    assert payload["unknown_sites"] == ["nope"]
+    assert seen == [["rmrb"]]
 
 
 # ---------------------------------------------------------------- self-documenting help
