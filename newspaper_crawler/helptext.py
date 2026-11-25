@@ -57,7 +57,11 @@ PLAN_EPILOG = """\
   resumed
   days     [{site, date, path, exists, status, action}]，action 为 fetch 或 skip；
            status 为账本状态（pending/failed/done/skipped/empty），非续传时为 null
-  summary  {"fetch": N, "skip": N}"""
+  summary  {"fetch": N, "skip": N}
+
+失败时的 --json 输出:
+  运行期失败（如 --resume 无账本、账本站点均不可用、内部错误）输出
+  {"ok": false, "error": "原因"}，退出码 1；人类可读的错误信息仍在 stderr。"""
 
 CRAWL_EPILOG = """\
 示例:
@@ -92,7 +96,11 @@ CRAWL_EPILOG = """\
   files           本次写入的文件路径
   skipped         因已存在而跳过的文件路径
   errors          [{"site": ..., "date": ..., "message": ...}]
-  warnings        同上格式；含无法识别的站点、索引页结构疑似变化等（不影响 ok）"""
+  warnings        同上格式；含无法识别的站点、索引页结构疑似变化等（不影响 ok）
+
+失败时的 --json 输出:
+  运行期失败（如 --resume 无账本、账本站点均不可用、内部错误）输出
+  {"ok": false, "error": "原因"}，退出码 1；人类可读的错误信息仍在 stderr。"""
 
 RUNS_EPILOG = """\
 列出本目录账本中的运行历史，以及上次运行仍未完成的日期。

@@ -587,6 +587,139 @@ def test_crawl_resume_without_a_ledger_is_an_error(capsys):
     assert "没有可续传的任务" in capsys.readouterr().err
 
 
+def test_crawl_resume_without_a_ledger_emits_error_json(capsys):
+    """With --json a runtime failure is still exactly one JSON object on stdout."""
+    assert main(["crawl", "--resume", "--quiet", "--json"]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert payload["error"]  # non-empty reason for scripts
+    assert "没有可续传的任务" in captured.err
+
+
+def test_crawl_resume_without_a_ledger_prints_no_json_in_text_mode(capsys):
+    """Without --json the failure stays on stderr; stdout stays empty."""
+    assert main(["crawl", "--resume", "--quiet"]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "没有可续传的任务" in captured.err
+
+
+def test_plan_resume_without_a_ledger_emits_error_json(capsys):
+    assert main(["plan", "--resume", "--json"]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert payload["error"]
+    assert "没有可续传的任务" in captured.err
+
+
+def test_crawl_resume_all_ledger_sites_gone_emits_error_json(tmp_path, capsys):
+    """The all-sites-gone resume failure is a JSON error object, not 0 bytes."""
+    store = StateStore()
+    _record_run(store, tmp_path, sites=("gone",))
+    store.record_day("gone", date(2026, 9, 1), FAILED)
+
+    assert main(["crawl", "--resume", "--json", "--quiet"]) == EXIT_ERROR
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert "均已不可用" in payload["error"]
+    assert "均已不可用" in captured.err
+
+
+def test_crawl_reports_an_unexpected_exception_as_error_json(
+    tmp_path, monkeypatch, capsys
+):
+    """A handler crash must not escape main: same JSON contract, no traceback."""
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr("newspaper_crawler.cli.run_multi", boom)
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-01",
+            "-o",
+            str(tmp_path),
+            "--json",
+            "--quiet",
+        ]
+    )
+
+    assert code == EXIT_ERROR
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["ok"] is False
+    assert "RuntimeError" in payload["error"]
+    assert "boom" in payload["error"]
+    assert "boom" in captured.err
+    assert "Traceback" not in captured.err
+
+
+def test_crawl_success_json_keeps_every_documented_field(
+    tmp_path, monkeypatch, capsys
+):
+    monkeypatch.setattr(
+        "newspaper_crawler.cli.run_multi",
+        lambda *args, **kwargs: CrawlStats(days_attempted=1, days_success=1),
+    )
+    code = main(
+        [
+            "crawl",
+            "--sites",
+            "rmrb",
+            "--start",
+            "2026-09-01",
+            "--end",
+            "2026-09-01",
+            "-o",
+            str(tmp_path),
+            "--json",
+            "--quiet",
+        ]
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert code == EXIT_OK
+    assert payload["ok"] is True
+    assert set(payload) == {
+        "ok",
+        "sites",
+        "unknown_sites",
+        "start_date",
+        "end_date",
+        "output_dir",
+        "format",
+        "elapsed_secs",
+        "resumed",
+        "stats",
+        "files",
+        "skipped",
+        "errors",
+        "warnings",
+    }
+    assert payload["sites"] == ["rmrb"]
+    assert payload["unknown_sites"] == []
+    assert payload["start_date"] == "2026-09-01"
+    assert payload["end_date"] == "2026-09-01"
+    assert payload["output_dir"] == str(tmp_path)
+    assert payload["format"] == "md"
+    assert payload["elapsed_secs"] >= 0
+    assert payload["resumed"] is False
+    assert payload["stats"]["days_attempted"] == 1
+    assert payload["files"] == []
+    assert payload["skipped"] == []
+    assert payload["errors"] == []
+    assert payload["warnings"] == []
+
+
 def test_crawl_resume_reruns_only_the_open_days(tmp_path, monkeypatch, capsys):
     store = StateStore()
     _record_run(store, tmp_path, sites=("rmrb", "gmrb"), end=date(2026, 9, 2))

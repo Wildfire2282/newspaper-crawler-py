@@ -377,6 +377,19 @@ def _update_preferences(store: StateStore, prefs: Preferences) -> None:
     store.save_preferences(**prefs.fields())
 
 
+def _fail(args: argparse.Namespace, message: str) -> int:
+    """Report a runtime failure: human message on stderr; with ``--json``, exactly
+    one ``{"ok": false, "error": ...}`` object on stdout instead.
+
+    ``getattr`` rather than ``args.json`` because ``runs``/``interactive`` never
+    carry the flag, and this helper must stay safe for any subcommand.
+    """
+    print(f"错误：{message}", file=sys.stderr)
+    if getattr(args, "json", False):
+        emit_json({"ok": False, "error": message})
+    return EXIT_ERROR
+
+
 # ---------------------------------------------------------------- subcommands
 
 
@@ -413,8 +426,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
     store = _get_store()
     plan = plan_resume(store) if args.resume else None
     if args.resume and plan is None:
-        print("错误：没有可续传的任务。", file=sys.stderr)
-        return EXIT_ERROR
+        return _fail(args, "没有可续传的任务。")
     # The dry run must apply the same skip rule the crawl will use. The parser
     # installs the stored preference; the getattr keeps direct library callers sane.
     skip_existing = getattr(args, "skip_existing", True)
@@ -423,8 +435,7 @@ def cmd_plan(args: argparse.Namespace) -> int:
         # Resume mode is ledger-driven: the work is exactly the open (site, date)
         # pairs, so the days are listed as-is instead of re-walking a date range.
         if not plan.days:
-            print("错误：账本中的站点均已不可用，无法续传。", file=sys.stderr)
-            return EXIT_ERROR
+            return _fail(args, "账本中的站点均已不可用，无法续传。")
         output_dir, fmt, start, end = plan.output_dir, plan.fmt, plan.start, plan.end
         keys, unknown = plan.keys, plan.unknown
         days = []
@@ -517,13 +528,11 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     store = _get_store()
     plan = plan_resume(store) if args.resume else None
     if args.resume and plan is None:
-        print("错误：没有可续传的任务。", file=sys.stderr)
-        return EXIT_ERROR
+        return _fail(args, "没有可续传的任务。")
 
     if plan is not None:
         if not plan.days:  # every site in the ledger is gone
-            print("错误：账本中的站点均已不可用，无法续传。", file=sys.stderr)
-            return EXIT_ERROR
+            return _fail(args, "账本中的站点均已不可用，无法续传。")
         keys, unknown = plan.keys, plan.unknown
         sites = [s for s in (lookup(k) for k in keys) if s is not None]
         output_dir, fmt, start, end = plan.output_dir, plan.fmt, plan.start, plan.end
@@ -755,7 +764,14 @@ def _run_subcommand(argv: list[str]) -> int:
         if settings.end < settings.start:
             print("错误：--end 不能早于 --start。", file=sys.stderr)
             return EXIT_USAGE
-    return args.func(args)
+    try:
+        return args.func(args)
+    except KeyboardInterrupt:
+        raise  # main() turns it into exit code 130 with its own message
+    except Exception as exc:  # noqa: BLE001 - the CLI must not die with a traceback
+        # A handler crash is a runtime failure like any other: same exit code, same
+        # JSON contract. The message carries the exception type for scripts.
+        return _fail(args, f"内部错误：{type(exc).__name__}: {exc}")
 
 
 def main(argv: list[str] | None = None) -> int:
