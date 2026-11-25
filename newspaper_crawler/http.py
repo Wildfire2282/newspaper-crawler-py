@@ -192,10 +192,16 @@ def _decode(resp: requests.Response) -> str:
     """
     raw = resp.content
     if raw.startswith(codecs.BOM_UTF8):
-        return raw.decode("utf-8-sig")
+        try:
+            return raw.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            pass  # BOM present but body is not valid utf-8; use the fallback chain.
     if raw.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
         # "utf-16" derives byte order from the BOM and consumes it.
-        return raw.decode("utf-16")
+        try:
+            return raw.decode("utf-16")
+        except UnicodeDecodeError:
+            pass  # e.g. odd-length body; fall through instead of raising.
     for encoding in ("utf-8", "gbk"):
         try:
             return raw.decode(encoding)

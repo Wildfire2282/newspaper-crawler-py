@@ -185,6 +185,16 @@ def test_decode_handles_utf16_bom():
     assert _decode(_Resp(200, "中文".encode("utf-16"))) == "中文"
 
 
+def test_decode_falls_through_on_malformed_utf8_bom():
+    # BOM followed by an invalid utf-8 byte: the BOM branch must not raise.
+    assert isinstance(_decode(_Resp(200, codecs.BOM_UTF8 + b"\xff")), str)
+
+
+def test_decode_falls_through_on_odd_length_utf16_bom():
+    # BOM plus one byte is not a whole code unit; utf-16 decoding must not raise.
+    assert isinstance(_decode(_Resp(200, codecs.BOM_UTF16_LE + b"\x00")), str)
+
+
 def test_decode_falls_back_to_apparent_encoding():
     # b"\xff\xff" is neither valid utf-8 nor valid GBK (0xFF is not a lead byte),
     # so decoding must fall through to apparent_encoding.
