@@ -934,6 +934,71 @@ def test_legacy_title_only_fallback_without_body():
     assert art_gmrb.paragraphs == []
 
 
+def test_legacy_gmrb_author_citation_only_becomes_empty():
+    """Live gmrb 2025-12-31 pages put only `作者：\n《光明日报》（ 2025年12月31日 01版）`
+    in `.lai`; that is a citation, not a byline, so the author is empty.
+    """
+    d = date(2025, 12, 31)
+    url = f"{gmrb.BASE_URL}/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_1-05.htm"
+    http = _FakeHttp(
+        {
+            url: '<meta name="description" content="无署名标题">'
+            '<div class="text_c"><p>段落一</p><p>段落二</p></div>'
+            '<span class="lai">作者：\n《光明日报》（ 2025年12月31日 01版）</span>'
+        }
+    )
+
+    art = gmrb.GuangmingCrawler().fetch_article(
+        http, ArticleRef(title="原标题", url=url), d
+    )
+
+    assert art is not None
+    assert art.author == ""
+    assert art.paragraphs == ["段落一", "段落二"]
+
+
+def test_legacy_gmrb_author_keeps_real_byline_before_citation():
+    """`作者：张三\n《光明日报》（…）` yields just the name."""
+    d = date(2025, 12, 31)
+    url = f"{gmrb.BASE_URL}/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_1-06.htm"
+    http = _FakeHttp(
+        {
+            url: '<meta name="description" content="署名标题">'
+            '<div class="text_c"><p>段落一</p></div>'
+            '<span class="lai">作者：张三\n《光明日报》（ 2025年12月31日 02版）</span>'
+        }
+    )
+
+    art = gmrb.GuangmingCrawler().fetch_article(
+        http, ArticleRef(title="原标题", url=url), d
+    )
+
+    assert art is not None
+    assert art.author == "张三"
+    assert art.paragraphs == ["段落一"]
+
+
+def test_legacy_rmrb_author_without_prefix_is_unchanged():
+    """`本报记者李四` carries no `作者：` prefix or citation, so it passes through."""
+    d = date(2024, 11, 30)
+    url = f"{rmrb.BASE_URL}/html/2024-11/30/nw.D110000renmrb_20241130_1-06.htm"
+    http = _FakeHttp(
+        {
+            url: '<meta name="description" content="记者署名标题">'
+            '<div class="text_c"><p>段落一</p></div>'
+            '<span class="lai">本报记者李四</span>'
+        }
+    )
+
+    art = rmrb.RenminCrawler().fetch_article(
+        http, ArticleRef(title="原标题", url=url), d
+    )
+
+    assert art is not None
+    assert art.author == "本报记者李四"
+    assert art.paragraphs == ["段落一"]
+
+
 def test_legacy_normal_article_still_parses():
     """The deeper container fallbacks (#ozoom for rmrb, .content for gmrb) keep
     yielding full articles through the shared parser.

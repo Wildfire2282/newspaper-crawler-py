@@ -8,6 +8,20 @@ from ..models import Article, ArticleRef
 from ..util import clean_title, make_soup, meta_content
 
 
+def _clean_author(text: str) -> str:
+    """Normalize a legacy `.lai` block: drop the `作者：` prefix and the trailing
+    `《报纸》（日期 版次）` citation, so only a real byline survives.
+    """
+    s = " ".join(text.split())
+    for prefix in ("作者：", "作者:"):
+        if s.startswith(prefix):
+            s = s[len(prefix) :].strip()
+            break
+    if "《" in s:
+        s = s.split("《", 1)[0].strip()
+    return s
+
+
 def fetch_legacy_article(
     http: HttpSession,
     r: ArticleRef,
@@ -47,6 +61,6 @@ def fetch_legacy_article(
         paragraphs = [s for s in paragraphs if s]
 
     lai = doc.select_one(author_selector)
-    author = lai.get_text().strip() if lai is not None else ""
+    author = _clean_author(lai.get_text()) if lai is not None else ""
 
     return Article(title=title, author=author, paragraphs=paragraphs, url=r.url)
