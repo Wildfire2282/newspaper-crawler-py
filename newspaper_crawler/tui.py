@@ -199,7 +199,7 @@ def choose_format(prefs: Preferences, store: Optional[StateStore] = None) -> Non
 
 
 def choose_advanced(prefs: Preferences, store: Optional[StateStore] = None) -> None:
-    """Menu 5: article concurrency, fast mode, skip-existing."""
+    """Menu 5: article/site concurrency, fast mode, skip-existing."""
     console.print(Panel("高级选项", border_style="cyan"))
 
     workers = ask("并发线程数", default=str(prefs.max_workers))
@@ -208,6 +208,12 @@ def choose_advanced(prefs: Preferences, store: Optional[StateStore] = None) -> N
     except ValueError:
         console.print("[yellow]并发数无效，保持原值[/yellow]")
 
+    site_workers = ask("站点并发数", default=str(prefs.site_workers))
+    try:
+        prefs.site_workers = max(1, int(site_workers))
+    except ValueError:
+        console.print("[yellow]站点并发数无效，保持原值[/yellow]")
+
     prefs.fast_mode = confirm(
         "快速模式（降低延迟、加大并发，谨慎使用）", default=prefs.fast_mode
     )
@@ -215,7 +221,8 @@ def choose_advanced(prefs: Preferences, store: Optional[StateStore] = None) -> N
         "断点续传（已下载日期自动跳过）", default=prefs.skip_existing
     )
     console.print(
-        f"[green]并发 {prefs.max_workers} · 快速模式 {'开' if prefs.fast_mode else '关'} · "
+        f"[green]并发 {prefs.max_workers} · 站点并发 {prefs.site_workers} · "
+        f"快速模式 {'开' if prefs.fast_mode else '关'} · "
         f"断点续传 {'开' if prefs.skip_existing else '关'}[/green]"
     )
     save_preferences(prefs, store)
@@ -290,6 +297,7 @@ def start_download(prefs: Preferences, store: Optional[StateStore] = None) -> No
         f"日期：{prefs.start_date} ~ {prefs.end_date}\n"
         f"输出目录：{output_dir}\n"
         f"格式：{prefs.output_format} · 并发：{opts.max_workers} · "
+        f"站点并发：{prefs.site_workers} · "
         f"快速模式：{'开' if prefs.fast_mode else '关'} · "
         f"断点续传：{'开' if prefs.skip_existing else '关'}"
     )
@@ -298,7 +306,7 @@ def start_download(prefs: Preferences, store: Optional[StateStore] = None) -> No
         return
 
     save_preferences(prefs, store)
-    run_crawl(store, site_keys, opts)
+    run_crawl(store, site_keys, opts, site_workers=prefs.site_workers)
 
 
 def _offer_resume(store: StateStore) -> bool:
@@ -323,7 +331,13 @@ def _offer_resume(store: StateStore) -> bool:
         default=True,
     ):
         return False
-    run_crawl(store, plan.keys, _resume_options(plan, store), days=plan.days)
+    run_crawl(
+        store,
+        plan.keys,
+        _resume_options(plan, store),
+        days=plan.days,
+        site_workers=store.preferences.site_workers,
+    )
     return True
 
 
@@ -345,6 +359,8 @@ def run_crawl(
     site_keys: list[str],
     opts,
     days=None,
+    *,
+    site_workers: int,
 ) -> None:
     """Run one crawl, keeping the ledger in sync for the duration.
 
@@ -367,6 +383,7 @@ def run_crawl(
             site_keys,
             opts,
             on_event=handle_event,
+            max_site_workers=site_workers,
             on_day=store.day_hook() if store is not None else None,
             days_by_site=resume_days(days) if days else None,
         )

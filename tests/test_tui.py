@@ -103,11 +103,12 @@ def test_choose_advanced_persists_workers_and_toggles(tmp_path, monkeypatch):
     store = StateStore(tmp_path)
     state = tui.default_preferences()
 
-    _answer(monkeypatch, asks=["8"], confirms=[True, False])
+    _answer(monkeypatch, asks=["8", "2"], confirms=[True, False])
     tui.choose_advanced(state, store)
 
     saved = StateStore(tmp_path).preferences
     assert saved.max_workers == 8
+    assert saved.site_workers == 2
     assert saved.fast_mode is True
     assert saved.skip_existing is False
 
@@ -125,7 +126,7 @@ def test_choose_sites_persists_the_selection(tmp_path, monkeypatch):
 
 def test_menu_functions_work_without_a_store(monkeypatch):
     prefs = tui.default_preferences()
-    _answer(monkeypatch, asks=["txt", "5"], confirms=[False, True])
+    _answer(monkeypatch, asks=["txt", "5", "3"], confirms=[False, True])
 
     tui.choose_format(prefs, None)
     tui.choose_advanced(prefs, None)
@@ -133,6 +134,7 @@ def test_menu_functions_work_without_a_store(monkeypatch):
 
     assert prefs.output_format == "txt"
     assert prefs.max_workers == 5
+    assert prefs.site_workers == 3
 
 
 # ---------------------------------------------------------------- resume flow
@@ -145,12 +147,15 @@ def test_start_download_offers_to_resume_open_days(tmp_path, monkeypatch):
 
     seen: dict = {}
 
-    def fake_run_multi(keys, opts, on_event, on_day=None, days_by_site=None, **kwargs):
+    def fake_run_multi(
+        keys, opts, on_event, max_site_workers=4, on_day=None, days_by_site=None, **kwargs
+    ):
         seen.update(
             keys=keys,
             start=opts.start_date,
             end=opts.end_date,
             days_by_site=days_by_site,
+            max_site_workers=max_site_workers,
         )
         on_day("rmrb", date(2026, 9, 1), DONE, tmp_path / "a.md", None)
         return CrawlStats(days_attempted=1, days_success=1)
@@ -166,8 +171,36 @@ def test_start_download_offers_to_resume_open_days(tmp_path, monkeypatch):
         "end": date(2026, 9, 1),
         # the allow-list is what keeps a resume from re-walking the whole range
         "days_by_site": {"rmrb": {"2026-09-01"}},
+        "max_site_workers": 4,
     }
     assert StateStore(tmp_path).open_days() == []
+
+
+def test_start_download_passes_site_workers_for_fresh_and_resume(
+    tmp_path, monkeypatch
+):
+    prefs = tui.default_preferences()
+    prefs.site_workers = 1
+    seen: list[int] = []
+
+    monkeypatch.setattr(
+        tui,
+        "run_multi",
+        lambda keys, opts, **kw: seen.append(kw["max_site_workers"]) or CrawlStats(),
+    )
+    monkeypatch.setattr(tui, "confirm", lambda *a, **k: True)
+
+    # fresh run: nothing in the ledger to resume
+    tui.start_download(prefs, StateStore(tmp_path / "fresh"))
+
+    # resume: one day left open by an earlier run
+    store = StateStore(tmp_path / "resume")
+    store.save_preferences(**prefs.fields())
+    store.start_run(["rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
+    store.record_day("rmrb", date(2026, 9, 1), FAILED)
+    tui.start_download(tui.default_preferences(), store)
+
+    assert seen == [1, 1]  # prefs.site_workers reaches run_multi on both paths
 
 
 def test_start_download_skips_the_resume_prompt_when_nothing_is_open(
@@ -179,19 +212,23 @@ def test_start_download_skips_the_resume_prompt_when_nothing_is_open(
 
     prompts: list[str] = []
     ran: list[list[str]] = []
+    workers: list[int] = []
     monkeypatch.setattr(tui, "ask", lambda *a, **k: "7")
     monkeypatch.setattr(tui, "confirm", lambda *a, **k: prompts.append(a[0]) or True)
     # Without this fake the test would crawl the real newspapers for the last 7 days.
     monkeypatch.setattr(
         tui,
         "run_multi",
-        lambda keys, opts, **kw: ran.append(keys) or CrawlStats(),
+        lambda keys, opts, **kw: ran.append(keys)
+        or workers.append(kw["max_site_workers"])
+        or CrawlStats(),
     )
 
     tui.start_download(tui.default_preferences(), store)
 
     assert prompts == ["确认开始下载？"]  # no resume offer
     assert len(ran) == 1  # proceeded to a fresh run instead
+    assert workers == [4]
 
 
 def test_run_crawl_closes_the_ledger_on_interrupt(tmp_path, monkeypatch, capsys):
@@ -207,7 +244,7 @@ def test_run_crawl_closes_the_ledger_on_interrupt(tmp_path, monkeypatch, capsys)
         raise KeyboardInterrupt
 
     monkeypatch.setattr(tui, "run_multi", interrupted)
-    tui.run_crawl(store, ["rmrb"], opts)
+    tui.run_crawl(store, ["rmrb"], opts, site_workers=4)
 
     assert "已中断" in capsys.readouterr().out
     assert store.last_run is not None
@@ -231,9 +268,14 @@ def test_start_download_runs_fresh_when_the_resume_offer_is_declined(
         return next(answers)
 
     ran: list[list[str]] = []
+    workers: list[int] = []
     monkeypatch.setattr(tui, "confirm", confirm)
     monkeypatch.setattr(
-        tui, "run_multi", lambda keys, opts, **kw: ran.append(keys) or CrawlStats()
+        tui,
+        "run_multi",
+        lambda keys, opts, **kw: ran.append(keys)
+        or workers.append(kw["max_site_workers"])
+        or CrawlStats(),
     )
 
     tui.start_download(tui.default_preferences(), store)
@@ -243,6 +285,7 @@ def test_start_download_runs_fresh_when_the_resume_offer_is_declined(
     assert ran == [
         ["zgjjzk", "rmzk", "rmrb", "rmrbhwb", "rmlt", "gmrb", "dzrb", "jjrb"]
     ]  # a fresh run over all sites
+    assert workers == [4]
 
 
 def test_handle_event_keeps_bracketed_site_keys(capsys):
