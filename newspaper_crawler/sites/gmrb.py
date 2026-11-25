@@ -23,9 +23,9 @@ from ..util import (
     clean_title,
     join_url,
     make_soup,
-    meta_content,
     page_numbers_from_links,
 )
+from .legacy import fetch_legacy_article
 
 BASE_URL = "https://epaper.gmw.cn"
 SWITCH_DATE = date(2026, 1, 1)
@@ -223,36 +223,13 @@ def _fetch_new_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
 
 
 def _fetch_old_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
-    html = http.get_text(r.url, silent_404=False)
-    if html is None:
-        return None
-    doc = make_soup(html)
-
-    title = r.title
-    desc = meta_content(doc, "description")
-    if len(desc.encode("utf-8")) > 5:
-        title = desc
-    if title == r.title:
-        t = doc.find("title")
-        if t is not None:
-            s = t.get_text().strip()
-            if len(s.encode("utf-8")) > 5:
-                title = s
-    title = clean_title(title)
-
-    container = (
-        doc.select_one(".text_c")
-        or doc.select_one(".c_c")
-        or doc.select_one(".content")
+    return fetch_legacy_article(
+        http,
+        r,
+        containers=(".text_c", ".c_c", ".content"),
+        author_selector=".lai",
+        clean_site_suffix=True,
     )
-    paragraphs: list[str] = []
-    if container is not None:
-        paragraphs = [p.get_text().strip() for p in container.find_all("p")]
-        paragraphs = [s for s in paragraphs if s]
-
-    lai = doc.select_one(".lai")
-    author = lai.get_text().strip() if lai is not None else ""
-    return Article(title=title, author=author, paragraphs=paragraphs, url=r.url)
 
 
 class GuangmingCrawler(SiteCrawler):

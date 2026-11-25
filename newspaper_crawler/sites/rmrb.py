@@ -19,7 +19,8 @@ from bs4 import BeautifulSoup
 from ..base import EmptyIndexError, SiteCrawler, fetch_texts
 from ..http import HttpSession
 from ..models import Article, ArticleRef, Edition
-from ..util import join_url, make_soup, meta_content, page_numbers_from_links
+from ..util import join_url, make_soup, page_numbers_from_links
+from .legacy import fetch_legacy_article
 from .people_pc import fetch_pc_article, get_node_editions
 
 BASE_URL = "http://paper.people.com.cn/rmrb"
@@ -113,39 +114,13 @@ def _get_old_editions(http: HttpSession, d: date) -> list[Edition]:
 
 
 def _fetch_old_article(http: HttpSession, r: ArticleRef) -> Optional[Article]:
-    html = http.get_text(r.url, silent_404=False)
-    if html is None:
-        return None
-    doc = make_soup(html)
-
-    # Title: meta description (>5 bytes) -> <title> (>5 bytes) -> reference title.
-    title = r.title
-    desc = meta_content(doc, "description")
-    if len(desc.encode("utf-8")) > 5:
-        title = desc
-    if title == r.title:
-        t = doc.find("title")
-        if t is not None:
-            s = t.get_text().strip()
-            if len(s.encode("utf-8")) > 5:
-                title = s
-
-    # Body container, tried in order.
-    container = (
-        doc.select_one(".text_c")
-        or doc.select_one(".c_c")
-        or doc.select_one("#ozoom")
-        or doc.select_one(".content")
+    return fetch_legacy_article(
+        http,
+        r,
+        containers=(".text_c", ".c_c", "#ozoom", ".content"),
+        author_selector=".lai, .author",
+        clean_site_suffix=False,
     )
-    paragraphs: list[str] = []
-    if container is not None:
-        paragraphs = [p.get_text().strip() for p in container.find_all("p")]
-        paragraphs = [s for s in paragraphs if s]
-
-    lai = doc.select_one(".lai, .author")
-    author = lai.get_text().strip() if lai is not None else ""
-
-    return Article(title=title, author=author, paragraphs=paragraphs, url=r.url)
 
 
 class RenminCrawler(SiteCrawler):

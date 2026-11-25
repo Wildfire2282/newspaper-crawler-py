@@ -857,3 +857,115 @@ def test_dzrb_article_without_contenttext_has_no_body():
 
     assert art is not None
     assert art.paragraphs == []
+
+
+# ---------------------------------------------------------------- Legacy shared parser
+# rmrb and gmrb old-system article pages share one parser (sites/legacy.py); these
+# tests pin its per-site knobs through each site's fetch_article.
+
+
+def test_legacy_meta_title_c_c_body_and_author():
+    """Meta description wins as the title, .c_c carries the body, and each site's
+    author selector works; rmrb keeps the "-人民网" suffix, gmrb strips its own.
+    """
+    d_rmrb = date(2024, 11, 30)
+    rmrb_url = f"{rmrb.BASE_URL}/html/2024-11/30/nw.D110000renmrb_20241130_1-02.htm"
+    d_gmrb = date(2025, 12, 31)
+    gmrb_url = f"{gmrb.BASE_URL}/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_1-02.htm"
+    http = _FakeHttp(
+        {
+            rmrb_url: '<meta name="description" content="标题甲-人民网">'
+            '<div class="c_c"><p>正文一</p></div>'
+            '<span class="author">本报记者某某</span>',
+            gmrb_url: '<meta name="description" content="标题乙-光明网">'
+            '<div class="c_c"><p>正文二</p></div>'
+            '<span class="lai">光明日报记者某某</span>',
+        }
+    )
+
+    art_rmrb = rmrb.RenminCrawler().fetch_article(
+        http, ArticleRef(title="原标题甲", url=rmrb_url), d_rmrb
+    )
+    art_gmrb = gmrb.GuangmingCrawler().fetch_article(
+        http, ArticleRef(title="原标题乙", url=gmrb_url), d_gmrb
+    )
+
+    assert art_rmrb is not None
+    assert art_rmrb.title == "标题甲-人民网"  # rmrb 不去除站名后缀
+    assert art_rmrb.author == "本报记者某某"  # .author 命中 rmrb 的选择器
+    assert art_rmrb.paragraphs == ["正文一"]
+
+    assert art_gmrb is not None
+    assert art_gmrb.title == "标题乙"  # gmrb 去除 "-光明网" 后缀
+    assert art_gmrb.author == "光明日报记者某某"
+    assert art_gmrb.paragraphs == ["正文二"]
+
+
+def test_legacy_title_only_fallback_without_body():
+    """No meta description, no usable <title>, no body container: the reference
+    title survives and the article has no paragraphs.
+    """
+    d_rmrb = date(2024, 11, 30)
+    rmrb_url = f"{rmrb.BASE_URL}/html/2024-11/30/nw.D110000renmrb_20241130_1-03.htm"
+    d_gmrb = date(2025, 12, 31)
+    gmrb_url = f"{gmrb.BASE_URL}/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_1-03.htm"
+    http = _FakeHttp(
+        {
+            rmrb_url: "<html><body><p>导航文字</p></body></html>",
+            gmrb_url: "<html><body><p>导航文字</p></body></html>",
+        }
+    )
+
+    art_rmrb = rmrb.RenminCrawler().fetch_article(
+        http, ArticleRef(title="仅标题甲", url=rmrb_url), d_rmrb
+    )
+    art_gmrb = gmrb.GuangmingCrawler().fetch_article(
+        http, ArticleRef(title="仅标题乙", url=gmrb_url), d_gmrb
+    )
+
+    assert art_rmrb is not None
+    assert art_rmrb.title == "仅标题甲"
+    assert art_rmrb.author == ""
+    assert art_rmrb.paragraphs == []
+
+    assert art_gmrb is not None
+    assert art_gmrb.title == "仅标题乙"
+    assert art_gmrb.author == ""
+    assert art_gmrb.paragraphs == []
+
+
+def test_legacy_normal_article_still_parses():
+    """The deeper container fallbacks (#ozoom for rmrb, .content for gmrb) keep
+    yielding full articles through the shared parser.
+    """
+    d_rmrb = date(2024, 11, 30)
+    rmrb_url = f"{rmrb.BASE_URL}/html/2024-11/30/nw.D110000renmrb_20241130_1-04.htm"
+    d_gmrb = date(2025, 12, 31)
+    gmrb_url = f"{gmrb.BASE_URL}/gmrb/html/2025-12/31/nw.D110000gmrb_20251231_1-04.htm"
+    http = _FakeHttp(
+        {
+            rmrb_url: '<meta name="description" content="常规标题">'
+            '<div id="ozoom"><p>第一段</p><p>第二段</p></div>'
+            '<span class="lai">本报记者某某</span>',
+            gmrb_url: '<meta name="description" content="常规标题">'
+            '<div class="content"><p>段一</p><p>段二</p></div>'
+            '<span class="lai">光明日报记者某某</span>',
+        }
+    )
+
+    art_rmrb = rmrb.RenminCrawler().fetch_article(
+        http, ArticleRef(title="常规标题", url=rmrb_url), d_rmrb
+    )
+    art_gmrb = gmrb.GuangmingCrawler().fetch_article(
+        http, ArticleRef(title="常规标题", url=gmrb_url), d_gmrb
+    )
+
+    assert art_rmrb is not None
+    assert art_rmrb.title == "常规标题"
+    assert art_rmrb.author == "本报记者某某"
+    assert art_rmrb.paragraphs == ["第一段", "第二段"]
+
+    assert art_gmrb is not None
+    assert art_gmrb.title == "常规标题"
+    assert art_gmrb.author == "光明日报记者某某"
+    assert art_gmrb.paragraphs == ["段一", "段二"]
