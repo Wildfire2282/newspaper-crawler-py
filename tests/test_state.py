@@ -1,6 +1,7 @@
 """state tests: defaults, corrupt-file recovery, preference round-trip, ledger flow."""
 
 import json
+import logging
 from datetime import date, timedelta
 from pathlib import Path
 
@@ -321,3 +322,43 @@ def test_run_ids_are_unique_within_the_same_second(tmp_path):
     second = store.start_run(["rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md")
 
     assert first.run_id != second.run_id
+
+
+def test_unwritable_state_warns_once_and_keeps_the_run_usable(tmp_path, monkeypatch):
+    """A read-only or full state location must not abort the crawl it is recording."""
+    store = StateStore(tmp_path)
+
+    def boom(path, content):
+        raise OSError("state directory is read-only")
+
+    records: list[logging.LogRecord] = []
+
+    class _Capture(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    handler = _Capture()
+    logger = logging.getLogger("newspaper")
+    logger.addHandler(handler)
+    monkeypatch.setattr("newspaper_crawler.state.atomic_write", boom)
+    try:
+        run = store.start_run(
+            ["rmrb"], date(2026, 9, 1), date(2026, 9, 1), tmp_path, "md"
+        )
+        store.save_preferences(max_workers=9)
+        store.record_day("rmrb", date(2026, 9, 1), DONE, path=tmp_path / "a.md")
+        store.finish_run({"days_success": 1})
+        assert store.save() is False
+    finally:
+        logger.removeHandler(handler)
+
+    assert run.days[0].status == DONE
+    assert store.preferences.max_workers == 9
+    assert store.history[0]["summary"][DONE] == 1
+    assert not store.path.exists()
+    warnings = [
+        record.getMessage()
+        for record in records
+        if "状态文件写入失败" in record.getMessage()
+    ]
+    assert len(warnings) == 1  # one incident, not one warning per save

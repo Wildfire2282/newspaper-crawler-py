@@ -162,6 +162,8 @@ class StateStore:
         self.last_run: Optional[RunRecord] = None
         self.history: list[dict] = []
         self._lock = threading.RLock()
+        # An unwritable state file is one incident, not one warning per day.
+        self._save_failure_logged = False
         self._load()
 
     # ------------------------------------------------------------------ loading
@@ -203,13 +205,31 @@ class StateStore:
             "history": self.history,
         }
 
-    def save(self) -> None:
-        """Persist the whole state atomically; last write wins."""
+    def save(self) -> bool:
+        """Persist the whole state atomically; last write wins.
+
+        Persistence is best-effort: an OSError (read-only directory, full disk) is
+        logged once and does not escape. A crawl must keep running when its bookkeeping
+        cannot be written - the ledger is useful, but not worth aborting the download.
+
+        Returns:
+            True when the state was persisted, False when the write failed.
+        """
         with self._lock:
-            atomic_write(
-                self.path,
-                json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n",
-            )
+            try:
+                atomic_write(
+                    self.path,
+                    json.dumps(self.to_dict(), ensure_ascii=False, indent=2) + "\n",
+                )
+            except OSError as exc:
+                if not self._save_failure_logged:
+                    log.warning(
+                        "状态文件写入失败（%s）：%s；本次运行继续", self.path, exc
+                    )
+                    self._save_failure_logged = True
+                return False
+            self._save_failure_logged = False
+            return True
 
     def save_preferences(self, **fields: Any) -> None:
         """Update one or more preference fields and persist immediately."""
@@ -302,16 +322,15 @@ class StateStore:
             self.save()
 
     def day_hook(self) -> Callable[..., None]:
-        """Scheduler ``on_day`` callback: persist one outcome, never raise.
+        """Scheduler ``on_day`` callback: persist one outcome.
 
-        The scheduler calls this from several site threads; writes are serialized
-        here. Losing a ledger update must not abort a crawl that is otherwise
-        working, so write errors are swallowed.
+        The scheduler calls this from several site threads; writes are serialized by
+        the store's lock. :meth:`save` already degrades an unwritable file to a
+        warning, so a ledger update cannot abort a crawl that is otherwise working.
         """
 
         def on_day(site, day, status, path=None, error=None) -> None:
-            with contextlib.suppress(OSError):
-                self.record_day(site, day, status, path=path, error=error)
+            self.record_day(site, day, status, path=path, error=error)
 
         return on_day
 

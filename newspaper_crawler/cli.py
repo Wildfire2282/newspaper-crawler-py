@@ -372,30 +372,9 @@ def _prefs_sites(keys: list[str]) -> str:
     return ",".join(keys) if keys else "all"
 
 
-def _update_preferences(
-    store: StateStore,
-    sites: list[SiteCrawler],
-    start: date,
-    end: date,
-    output_dir: Path,
-    fmt: OutputFormat,
-    max_workers: int,
-    fast: bool,
-    skip_existing: bool,
-    site_workers: int,
-) -> None:
-    """Persist what the run actually used, so the next run defaults to it."""
-    store.save_preferences(
-        site_keys=[s.crawler_id for s in sites],
-        start_date=start,
-        end_date=end,
-        output_dir=str(output_dir),
-        output_format=fmt.ext(),
-        max_workers=max_workers,
-        fast_mode=fast,
-        skip_existing=skip_existing,
-        site_workers=site_workers,
-    )
+def _update_preferences(store: StateStore, prefs: Preferences) -> None:
+    """Persist the preferences a run actually used, so the next run defaults to them."""
+    store.save_preferences(**prefs.fields())
 
 
 # ---------------------------------------------------------------- subcommands
@@ -617,15 +596,17 @@ def cmd_crawl(args: argparse.Namespace) -> int:
     if plan is None:
         _update_preferences(
             store,
-            sites,
-            start,
-            end,
-            output_dir,
-            fmt,
-            workers,
-            args.fast,
-            args.skip_existing,
-            site_workers,
+            Preferences(
+                site_keys=keys,
+                start_date=start,
+                end_date=end,
+                output_dir=str(output_dir),
+                output_format=fmt.ext(),
+                max_workers=workers,
+                fast_mode=args.fast,
+                skip_existing=args.skip_existing,
+                site_workers=site_workers,
+            ),
         )
 
     ok = not unknown and not progress.errors

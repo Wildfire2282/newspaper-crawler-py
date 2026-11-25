@@ -98,17 +98,16 @@ class Preferences:
         return as_path(self.output_dir, cwd)
 
     def to_dict(self, cwd: Path) -> dict:
-        return {
-            "site_keys": list(self.site_keys),
-            "start_date": self.start_date.isoformat(),
-            "end_date": self.end_date.isoformat(),
-            "output_dir": _relative_output_dir(self.output_dir, cwd),
-            "output_format": self.output_format,
-            "max_workers": self.max_workers,
-            "fast_mode": self.fast_mode,
-            "skip_existing": self.skip_existing,
-            "site_workers": self.site_workers,
-        }
+        """JSON-ready copy of :meth:`fields`, with dates and the output dir encoded.
+
+        Deriving from ``fields()`` is deliberate: a preference added there can no
+        longer be persisted by the menu and silently dropped by the state writer.
+        """
+        values = self.fields()
+        values["start_date"] = self.start_date.isoformat()
+        values["end_date"] = self.end_date.isoformat()
+        values["output_dir"] = _relative_output_dir(self.output_dir, cwd)
+        return values
 
     @classmethod
     def from_dict(cls, raw: dict, cwd: Path) -> "Preferences":
@@ -146,5 +145,3 @@ class Preferences:
             skip_existing=_bool(raw.get("skip_existing"), base.skip_existing),
             site_workers=max(1, site_workers),
         )
-
-
