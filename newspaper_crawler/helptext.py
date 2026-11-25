@@ -95,8 +95,9 @@ CRAWL_EPILOG = """\
                   total_editions / total_articles / total_errors
   files           本次写入的文件路径
   skipped         因已存在而跳过的文件路径
-  errors          [{"site": ..., "date": ..., "message": ...}]
-  warnings        同上格式；含无法识别的站点、索引页结构疑似变化等（不影响 ok）
+  errors          [{"site": ..., "date": ..., "message": ...}]；含日级失败，
+                  如索引页结构疑似变化（影响 ok）
+  warnings        同上格式；含无法识别的站点等（不影响 ok）
 
 失败时的 --json 输出:
   运行期失败（如 --resume 无账本、账本站点均不可用、内部错误）输出

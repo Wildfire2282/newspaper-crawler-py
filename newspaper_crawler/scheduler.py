@@ -132,16 +132,16 @@ def run_site(
             )
         except EmptyIndexError as exc:
             # Index page present but unrecognizable -> likely a site redesign.
-            # Count as an empty day, but warn: silence here would hide the breakage.
+            # Record a failed, resumable day: an empty day is a publication fact.
+            log.error("抓取 %s %s 失败（索引页结构疑似已变化）: %s", site_name, current, exc)
             stats.days_attempted += 1
-            stats.days_empty += 1
-            report(current, STATUS_EMPTY, error=str(exc))
+            stats.total_errors += 1
+            report(current, STATUS_FAILED, error=f"索引页结构疑似变化: {exc}")
             emit(
-                "log",
-                level="warn",
+                "day_error",
                 date=current,
                 message=(
-                    f"[{site_name}] {current}({weekday}) 无报纸"
+                    f"[{site_name}] {current}({weekday}) 抓取失败"
                     f"（索引页结构疑似已变化：{exc}）"
                 ),
             )

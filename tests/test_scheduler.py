@@ -119,24 +119,31 @@ def test_run_site_reports_empty_day(tmp_path, no_network):
     assert "day_empty" in [e.kind for e in events]
 
 
-def test_run_site_warns_when_index_structure_changed(tmp_path, no_network):
-    """Index page present but unrecognizable: count as empty, but warn loudly."""
+def test_run_site_fails_when_index_structure_changed(tmp_path, no_network):
+    """Index page present but unrecognizable: a failed, resumable day."""
 
     def changed():
         raise EmptyIndexError("版面导航为空")
 
     site = _Site(changed)
     events = []
-    stats = run_site(site, _opts(tmp_path), events.append)
+    calls = []
+    stats = run_site(
+        site, _opts(tmp_path), events.append, lambda *args: calls.append(args)
+    )
 
-    assert stats.days_empty == 1
+    assert stats.days_empty == 0
     assert stats.days_attempted == 1
-    assert stats.total_errors == 0  # a structure change is not a runtime error
+    assert stats.total_errors == 1
 
-    warns = [e for e in events if e.kind == "log" and e.level == "warn"]
-    assert len(warns) == 1
-    assert "索引页结构疑似已变化" in warns[0].message
-    assert warns[0].date == D1
+    assert calls[0][2] == "failed"
+    assert "索引页结构疑似变化" in calls[0][4]
+
+    errors = [e for e in events if e.kind == "day_error"]
+    assert len(errors) == 1
+    assert "索引页结构疑似已变化" in errors[0].message
+    assert errors[0].date == D1
+    assert "day_empty" not in [e.kind for e in events]
 
 
 def test_run_site_counts_editions_error(tmp_path, no_network):
